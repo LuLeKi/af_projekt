@@ -160,7 +160,7 @@ class PathPlanning:
         normals.append(normals[-1] if normals else np.array([0.0, 0.0]))
         return np.array(normals)
 
-    def extract_local_path(self, waypoints, normals, length=50):
+    def extract_local_path(self, waypoints, normals, length=400):
         """
         Extrahiert lokalen Pfadabschnitt basierend auf Fahrzeugposition.
 
