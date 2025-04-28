@@ -6,11 +6,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
 from env_wrapper import CarRacingEnvWrapper
+from input_controller import InputController
+import pygame as game
 
 
 def evaluate(env, eval_runs=50, eval_length=600):
 
     episode_rewards = []
+    input_controller = InputController()
     for episode in range(eval_runs):
 
         seed = int(np.random.randint(0, int(1e6)))
@@ -18,11 +21,13 @@ def evaluate(env, eval_runs=50, eval_length=600):
 
         episode_rewards.append(0.0)
         for t in range(eval_length):
+            input_controller.update()
+            print(episode)
 
             action = [
-                np.random.uniform(-1, 1),
-                np.random.uniform(0, 1),
-                np.random.uniform(0, 1),
+                input_controller.steer,
+                input_controller.accelerate,
+                input_controller.brake,
             ]
 
             state_image, r, done, trunc, info = env.step(action)
@@ -71,4 +76,5 @@ def main():
 
 
 if __name__ == "__main__":
+    game.init()
     main()
