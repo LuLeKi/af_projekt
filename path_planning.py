@@ -3,212 +3,168 @@ import time
 from scipy.interpolate import splprep, splev
 
 class PathPlanning:
-    """
-    PathPlanning: Pfadplanung auf Basis von Fahrspurerkennung.
-    Behandelt Spurverluste, Streckenende und dynamische Pfadanpassung.
-    """
-
     def __init__(self):
-        """Initialisiert alle Statusvariablen."""
-        self._last_debug_time = time.time()
         self.vehicle_position = np.array([48.0, 64.0])
-        self.last_valid_waypoints = None
-        self.last_valid_curvature = 0.0
-        self.invalid_counter = 0
-        self.track_finished = False
+
+        # Für rohe Trajektorie – Basislinie, darf „sanfter“ sein
+        self.trajectory_scalar = 1500
+        self.trajecotry_smoothing = 15
+        self.splinegrad = 2
+
+        # Für optimierten Pfad – darf feiner auf Kurven reagieren
+        self.opti_trajectory_scalar = 1500
+        self.opti_trajecotry_smoothing = 10 # weniger glätten
+        self.opti_splinegrad = 2            # kein Overshoot
+
+        self.curvature_clip_threshold = 0.02
+        self.max_cut_shift = 8
+
+        self.distance_threshold = 100
+
+        self._last_debug_time = time.time()
 
     def plan(self, left_lane: np.ndarray, right_lane: np.ndarray):
-        """
-        Plant den nächsten Fahrzeugpfad basierend auf Spurgrenzen.
+        path_waypoints = self.build_waypoints(left_lane, right_lane)
+        path_trajectory, spline_model, u_fine = self.build_trajectory(path_waypoints, False)
 
-        Args:
-            left_lane (np.ndarray): Punkte der linken Spurbegrenzung.
-            right_lane (np.ndarray): Punkte der rechten Spurbegrenzung.
-
-        Returns:
-            Tuple[np.ndarray, float]: Anpassungspfad und normierte Krümmung.
-        """
-        if self.track_finished:
-            return self.generate_emergency_stop_path()
-
-        if not self.lanes_are_valid(left_lane, right_lane):
-            return self.handle_invalid_data()
-
-        waypoints, tck, u_fine = self.build_waypoints(left_lane, right_lane)
-
-        if waypoints is None or len(waypoints) == 0:
-            return self.handle_invalid_data()
-
-        curvature = self.calculate_curvature(tck, u_fine)
+        curvature = self.calculate_curvature(spline_model, u_fine)
         normalized_curvature = self.normalize_curvature(curvature)
-        normals = self.calculate_normals(waypoints)
+        normals = self.calculate_normals(spline_model, u_fine)
 
-        local_path, local_normals = self.extract_local_path(waypoints, normals)
+        optimized_path_waypoints = self.optimize_path(path_trajectory, normals, curvature, normalized_curvature)
+        optimized_path_trajectory = self.build_trajectory(optimized_path_waypoints, True)
 
-        if len(local_path) < 3:
-            return self.handle_invalid_data()
-
-        adjusted_path = self.adjust_and_smooth_path(local_path, local_normals, normalized_curvature)
-
-        self.update_valid_state(adjusted_path, normalized_curvature)
-        self.print_debug_info(left_lane, right_lane, waypoints, curvature, normalized_curvature, local_path, adjusted_path)
-
-        return adjusted_path, normalized_curvature
-
-    def lanes_are_valid(self, left_lane, right_lane):
-        """Prüft ob die Fahrspurgrenzen plausibel und synchron sind."""
-        if len(left_lane) == 0 or len(right_lane) == 0:
-            return False
-        num_points = min(len(left_lane), len(right_lane))
-        distances = np.linalg.norm(left_lane[:num_points] - right_lane[:num_points], axis=1)
-        return not np.any(distances < 5.0) and not np.any(distances > 100.0)
+        optimized_local_path = self.extract_local_path(optimized_path_trajectory)
+        local_path = self.extract_local_path(path_trajectory)
+        return optimized_local_path, local_path, curvature
 
     def build_waypoints(self, left_lane, right_lane):
-        """
-        Erzeugt Wegpunkte basierend auf Mittellinien-Interpolation.
+        min_len = min(len(left_lane), len(right_lane))
+        return (left_lane[:min_len] + right_lane[:min_len]) / 2.0
 
-        Returns:
-            Tuple[np.ndarray, optional]: Wegpunkte und Spline-Parameter falls verfügbar.
-        """
-        midpoints = (left_lane[:len(right_lane)] + right_lane[:len(left_lane)]) / 2.0
-        if len(midpoints) >= 3:
-            tck, u = splprep([midpoints[:, 0], midpoints[:, 1]], s=5.0, k=2)
-            u_fine = np.linspace(0, 1, 500)
-            x, y = splev(u_fine, tck)
-            return np.vstack((x, y)).T, tck, u_fine
-        return midpoints, None, None
+    def build_trajectory(self, waypoints, optimized=False):
+        if optimized:
+            smoothing = self.opti_trajecotry_smoothing
+            splinegrad = self.opti_splinegrad
+            scalar = self.opti_trajectory_scalar
+        else:
+            smoothing = self.trajecotry_smoothing
+            splinegrad = self.splinegrad
+            scalar = self.trajectory_scalar
 
-    def handle_invalid_data(self):
-        """
-        Handhabt ungültige oder fehlerhafte Fahrspurinformationen.
-        Gibt Dummy-Pfad oder zuletzt gültigen Pfad zurück.
-        """
-        self.invalid_counter += 1
-        if self.invalid_counter < 50:
-            return self.generate_dummy_path()
-        if self.invalid_counter > 200 and not self.track_finished:
-            print("\n→ Zu lange keine Spur gefunden! Strecke wird als beendet angesehen.\n")
-            self.track_finished = True
-            return self.generate_emergency_stop_path()
-        return (self.last_valid_waypoints, self.last_valid_curvature) if self.last_valid_waypoints is not None else self.generate_dummy_path()
+        spline_model = splprep([waypoints[:, 0], waypoints[:, 1]],
+                            s=smoothing, k=splinegrad)[0]
+        u_fine = np.linspace(0, 1, scalar)
+        x_spline, y_spline = splev(u_fine, spline_model)
 
-    def generate_emergency_stop_path(self):
-        """Erstellt einen Notfallpfad zum sofortigen Anhalten."""
-        stop_path = np.array([[self.vehicle_position[0], self.vehicle_position[1]]])
-        return stop_path, 0.0
+        if optimized:
+            return np.vstack((x_spline, y_spline)).T
+        else:
+            return np.vstack((x_spline, y_spline)).T, spline_model, u_fine
 
-    def generate_dummy_path(self):
-        """Erstellt einen kurzen Notfallpfad leicht nach vorne."""
-        dummy_path = np.array([[self.vehicle_position[0], self.vehicle_position[1] + 5.0]])
-        return dummy_path, 0.0
+    
+    
+    def calculate_curvature(self, spline_model, u_fine):
+        dx, dy = splev(u_fine, spline_model, der=1)
+        ddx, ddy = splev(u_fine, spline_model, der=2)
+        numerator = dx * ddy - dy * ddx
+        denominator = (dx**2 + dy**2) ** 1.5
+        with np.errstate(divide='ignore', invalid='ignore'):
+            curvature = np.where(denominator != 0, numerator / denominator, 0.0)
+        return curvature
+    
+    def normalize_curvature(self, curvature: np.ndarray) -> np.ndarray:
+        return np.clip(curvature / self.curvature_clip_threshold, -1.0, 1.0)
 
-    def update_valid_state(self, path, curvature):
-        """Aktualisiert den letzten gültigen Pfad und setzt Fehlerzähler zurück."""
-        self.last_valid_waypoints = path.copy()
-        self.last_valid_curvature = curvature
-        self.invalid_counter = 0
 
-    def calculate_curvature(self, tck, u_fine):
-        """
-        Berechnet die mittlere absolute Krümmung eines Splines.
+    def calculate_normals(self, spline_model, u_values: np.ndarray) -> np.ndarray:
+        # 1. Tangenten berechnen (1. Ableitung der Spline-Funktion)
+        dx, dy = splev(u_values, spline_model, der=1)
+        tangents = np.stack((dx, dy), axis=-1)  # Shape: (N, 2)
 
-        Args:
-            tck: Spline-Parameter.
-            u_fine: Verfeinerte Stützstellen.
+        # 2. Normieren der Tangenten
+        norms = np.linalg.norm(tangents, axis=1, keepdims=True)
+        tangents_normalized = np.divide(tangents, norms, out=np.zeros_like(tangents), where=norms != 0)
 
-        Returns:
-            float: Mittlere Krümmung.
-        """
-        if tck is None or u_fine is None:
-            return 0.0
-        dx, dy = splev(u_fine, tck, der=1)
-        ddx, ddy = splev(u_fine, tck, der=2)
-        curvature = (dx * ddy - dy * ddx) / np.power(dx**2 + dy**2, 1.5)
-        mean_curvature = np.mean(np.abs(curvature)) if curvature.size > 0 else 0.0
-        return 0.0 if mean_curvature > 1.0 else mean_curvature
+        # 3. Normalen durch 90°-Rotation der Tangenten (rechtsdrehend)
+        # [x, y] → [-y, x]
+        normals = np.stack((-tangents_normalized[:, 1], tangents_normalized[:, 0]), axis=-1)
 
-    def normalize_curvature(self, curvature, min_radius=10.0, max_radius=1000.0):
-        """
-        Normalisiert die Krümmung auf einen Wert zwischen 0 und 1.
-        
-        Args:
-            curvature (float): Echte Krümmung.
+        return normals
 
-        Returns:
-            float: Normierte Krümmung.
-        """
-        if curvature == 0:
-            return 0.0
-        radius = np.clip(1.0 / abs(curvature), min_radius, max_radius)
-        return (max_radius - radius) / (max_radius - min_radius)
 
-    def calculate_normals(self, waypoints):
-        """
-        Berechnet Normalenvektoren entlang der Mittellinie.
-        
-        Args:
-            waypoints (np.ndarray): Punkte entlang der Spurmittellinie.
+    def optimize_path(self, trajectory_path, normals, curvature, normalized_curvature):
 
-        Returns:
-            np.ndarray: Array von Normalenvektoren.
-        """
-        normals = []
-        for i in range(1, len(waypoints)):
-            direction = waypoints[i] - waypoints[i-1]
-            norm = np.linalg.norm(direction)
-            normals.append(np.array([-direction[1], direction[0]]) / norm if norm else np.array([0.0, 0.0]))
-        normals.append(normals[-1] if normals else np.array([0.0, 0.0]))
-        return np.array(normals)
-
-    def extract_local_path(self, waypoints, normals, length=400):
-        """
-        Extrahiert lokalen Pfadabschnitt basierend auf Fahrzeugposition.
-
-        Args:
-            waypoints (np.ndarray): Alle verfügbaren Wegpunkte.
-            normals (np.ndarray): Berechnete Normalen.
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: Lokale Wegpunkte und zugehörige Normalen.
-        """
-        closest_idx = self.find_closest_index(waypoints, self.vehicle_position)
-        return waypoints[closest_idx:closest_idx+length], normals[closest_idx:closest_idx+length]
-
-    def find_closest_index(self, waypoints, position):
-        """Findet Index des nächsten Wegpunkts zur aktuellen Fahrzeugposition."""
-        distances = np.linalg.norm(waypoints - position, axis=1)
-        return np.argmin(distances)
-
-    def adjust_and_smooth_path(self, local_path, local_normals, normalized_curvature):
-        """
-        Verschiebt den lokalen Pfad dynamisch entlang der Normalen und glättet ihn.
-
-        Args:
-            local_path (np.ndarray): Lokaler unbearbeiteter Pfad.
-            local_normals (np.ndarray): Normalenvektoren entlang des Pfads.
-            normalized_curvature (float): Normierte Krümmung.
-
-        Returns:
-            np.ndarray: Angepasster und geglätteter Pfad.
-        """
-        adjusted = local_path.copy()
-        shift = normalized_curvature * 5.0
+        adjusted = trajectory_path.copy()
         for i in range(len(adjusted)):
-            adjusted[i] += local_normals[i] * shift
-        if len(adjusted) < 3:
-            return adjusted
-        tck, u = splprep([adjusted[:, 0], adjusted[:, 1]], s=1.0, k=2)
-        u_fine = np.linspace(0, 1, len(adjusted))
-        x, y = splev(u_fine, tck)
-        return np.vstack((x, y)).T
+            shift = normalized_curvature[i] * self.max_cut_shift  
+            adjusted[i] += normals[i] * shift
 
-    def print_debug_info(self, left, right, midpoints, curvature, normalized_curvature, local_path, adjusted_path):
-        """Gibt aktuelle Pfad- und Krümmungsinformationen aus (nur jede Sekunde einmal)."""
+            if self.should_debug():
+                self.debug(trajectory_path, adjusted, normals, curvature, normalized_curvature)
+
+
+        return adjusted
+
+
+    def should_debug(self, interval=1):
         now = time.time()
-        if now - self._last_debug_time >= 1.0:
-            print(f"L: {left[0]} | R: {right[0]} | M: {midpoints[0]}")
-            print(f"Krümmung: {curvature:.5f} | Normierte Krümmung: {normalized_curvature:.2f}")
-            if len(local_path) > 0:
-                print(f"Lokaler Pfad: {local_path[0]} | Angepasst: {adjusted_path[0]}")
-            print("-" * 60)
+        if now - self._last_debug_time >= interval:
             self._last_debug_time = now
+            return True
+        return False
+   
+    def debug(self, trajectory_path, adjusted, normals, raw_curvature, normalized_curvature):
+        idx = self.find_closest_index(trajectory_path, self.vehicle_position)
+        print("\n================== [FULL DEBUG: PATH OPTIMIZATION] ==================")
+        print(f"Fahrzeugposition: {self.vehicle_position}")
+        print(f"Parameter: max_cut_shift={self.max_cut_shift}, "
+            f"curvature_clip_threshold={self.curvature_clip_threshold}, "
+            f"splinegrad={self.splinegrad}/{self.opti_splinegrad}, "
+            f"smoothing={self.trajecotry_smoothing}/{self.opti_trajecotry_smoothing}, "
+            f"scalar={self.trajectory_scalar}/{self.opti_trajectory_scalar}")
+        print("---------------------------------------------------------------------")
+
+        for j in range(idx, min(idx + 5, len(adjusted))):
+            raw = raw_curvature[j]
+            norm = normalized_curvature[j]
+            shift_j = norm * self.max_cut_shift
+            tangent = adjusted[j] - trajectory_path[j]
+            tangent_len = np.linalg.norm(tangent)
+            normal_len = np.linalg.norm(normals[j])
+            dist_to_vehicle = np.linalg.norm(trajectory_path[j] - self.vehicle_position)
+
+            print(f"[{j}]")
+            print(f"  raw_curv      = {raw:+.5f}")
+            print(f"  norm_curv     = {norm:+.2f}")
+            print(f"  shift         = {shift_j:+.3f} (max = {self.max_cut_shift})")
+            print(f"  old_pos       = {trajectory_path[j]}")
+            print(f"  new_pos       = {adjusted[j]}")
+            print(f"  normal        = {normals[j]}, |n| = {normal_len:.3f}")
+            print(f"  shift_vec     = {tangent}, |shift_vec| = {tangent_len:.3f}")
+            print(f"  dist_to_vehicle = {dist_to_vehicle:.2f}")
+            if abs(norm) > 5:
+                print("  ⚠️  Achtung: sehr starke normierte Krümmung!")
+            if abs(shift_j) > 0.8 * self.max_cut_shift:
+                print("  ⚠️  Achtung: fast maximaler Shift erreicht!")
+            print("---------------------------------------------------------------------")
+
+
+        
+    def find_closest_index(self, waypoints, position):
+        distances = np.linalg.norm(waypoints - position, axis=1)
+        return int(np.argmin(distances))
+
+    def extract_local_path(self, trajectory_points):
+        closest_idx = self.find_closest_index(trajectory_points, self.vehicle_position)
+        local_path = []
+        total_distance = 0.0
+        for i in range(closest_idx, len(trajectory_points) - 1):
+            current_point = trajectory_points[i]
+            next_point = trajectory_points[i + 1]
+            segment_length = np.linalg.norm(next_point - current_point)
+            total_distance += segment_length
+            local_path.append(current_point)
+            if total_distance >= self.distance_threshold:
+                break
+        return np.array(local_path)
