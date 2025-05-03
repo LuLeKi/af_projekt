@@ -27,10 +27,10 @@ def run(env, input_controller: InputController):
             if 0 < point[0] < 96 and 0 < point[1] < 84:
                 cv_image[int(point[1]), int(point[0])] = [0, 255, 0]  # Grün
 
-        # Originaler Pfad: lila
-        for point in np.array(original_waypoints, dtype=np.int32):
-            if 0 < point[0] < 96 and 0 < point[1] < 84:
-                cv_image[int(point[1]), int(point[0])] = [255, 0, 255]  # Lila
+        # # Originaler Pfad: lila
+        # for point in np.array(original_waypoints, dtype=np.int32):
+        #     if 0 < point[0] < 96 and 0 < point[1] < 84:
+        #         cv_image[int(point[1]), int(point[0])] = [255, 0, 255]  # Lila
 
         # Linke Spur: rot
         for point in info["left_lane_boundary"]:
