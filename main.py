@@ -57,7 +57,7 @@ def main():
         gym.make(
             "CarRacing-v3",
             render_mode=render_mode,
-            domain_randomize=args.domain_randomize,
+            domain_randomize=True,
         )
     )
 
