@@ -4,9 +4,12 @@ from scipy.signal import convolve2d
 import matplotlib.pyplot as plt
 
 
+
 class LaneDetection:
 
     debug_image = None
+    left_lane = None
+    right_lane = None
     # for randomize optim calculte histogram and then 
     # improve contrast
     THRESHOLDING_POINT = 50
@@ -43,6 +46,25 @@ class LaneDetection:
  
         return curr.astype(np.uint8) * 255
 
+    def grow(self, img, start):
+        mask = img > 0
+        visited = np.zeros_like(mask, dtype=bool)
+        stack = [start]
+        height, width = mask.shape
+
+        while stack:
+            y, x = stack.pop()
+            if not (0 <= y < height and 0 <= x < width):
+                continue
+            if visited[y, x] or not mask[y, x]:
+                continue
+
+            visited[y, x] = True
+            # add four pints around current coordinate to stack
+            # to then check if they are in the mask(image)
+            stack.extend([(y-1, x), (y+1, x), (y, x-1), (y, x+1)])
+
+        return visited.astype(np.uint8) * 255
 
     def detect(self, state_image):
         # turn image to grayscale
@@ -51,14 +73,19 @@ class LaneDetection:
 
         # now convolve the image
         # i want to use prewitt
-        kx = np.array([[-1, 0, 1] for i in range(0,3)], dtype=np.float32)
-        ky = np.array([[1 - i, 1 - i, 1 - i] for i in range(0, 3)], dtype=np.float32)
+        kx = np.array([[-1, 0, 1],
+               [-1, 0, 1],
+               [-1, 0, 1]], dtype=np.float32)  # vertical filter
+
+        ky = np.array([[ 1,  1,  1],
+               [ 0,  0,  0],
+               [-1, -1, -1]], dtype=np.float32)  
         # print(kx.shape, ky.shape)
 
         cx = convolve2d(gray_normalized, kx, mode="same", boundary="symm")
         cy = convolve2d(gray_normalized, ky, mode="same", boundary="symm")
 
-        grad = np.sqrt(cx**2, cy**2)
+        grad = np.sqrt(cx**2 + cy**2)
         # print(grad)
         grad = self.normalize_floats(grad)
 
@@ -82,9 +109,13 @@ class LaneDetection:
             # fallback if not enough edges
             left_x, right_x = -1, -1
 
-        left_lane = self.grow_region(grad, (cary, left_x), structure=np.ones((3, 3), dtype=bool))
-        right_lane = self.grow_region(grad, (cary, right_x), structure=np.ones((3, 3), dtype=bool))
+        #left_lane = self.grow_region(grad, (cary, left_x), structure=np.ones((3, 3), dtype=bool))
+        #right_lane = self.grow_region(grad, (cary, right_x), structure=np.ones((3, 3), dtype=bool))
+        left_lane = self.grow(grad, (cary, left_x))
+        right_lane = self.grow(grad, (cary, right_x))
 
+        # left_lane = self.reconstruct_from_seed(grad, (cary, left_x))
+        # right_lane = self.reconstruct_from_seed(grad, (cary, right_x))
         # rescale in the end
         # gray_normalized = grad.astype(np.uint8)
 
@@ -92,9 +123,16 @@ class LaneDetection:
         # plt.colorbar()
         # mplt.title("Gradient Magnitude with Colormap")
         # plt.show()
-        left_lane = np.stack((left_lane,) * 3, axis=-1) * (100, 98, 200) 
-        right_lane = np.stack((right_lane,) * 3, axis=-1) * (50, 200, 180) 
-        self.debug_image = left_lane + right_lane 
-        print(self.debug_image)
+        left_lane_mask = left_lane.astype(bool)[:, :, np.newaxis]
+        right_lane_mask = right_lane.astype(bool)[:, :, np.newaxis]
+        initial_lanes_mask = (grad > 0).astype(bool)[:, :, np.newaxis]
+        lanes_mask = left_lane_mask | right_lane_mask | initial_lanes_mask 
+        self.debug_image = np.where(initial_lanes_mask, np.stack((grad,) * 3, axis=-1) * (1, 1, 1), self.debug_image)
+        self.debug_image = np.where(lanes_mask, np.stack((left_lane,) * 3, axis=-1) * (0, 0, 1), state_image)
+        self.debug_image = np.where(right_lane_mask, np.stack((right_lane,) * 3, axis=-1) * (0, 1, 0), self.debug_image)
+
+        self.left_lane = left_lane
+        self.right_lane = right_lane
+ 
       # self.debug_image = state_image
         pass
