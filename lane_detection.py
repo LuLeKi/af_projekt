@@ -17,6 +17,22 @@ class LaneDetection:
     def __init__(self):
         pass
 
+    def align_to_wrapper(self, detected_pts: np.ndarray) -> np.ndarray:
+        STATE_H = 96
+        """
+        detected_pts: (N,2) array of (v,row, u,col) in [0..95] state‐pixel coords
+        returns:      (N,2) array of (x, y) in same frame as
+                    _get_lane_boundary_groundtruth  i.e. origin bottom‐left.
+        """
+        vs = detected_pts[:, 0].astype(float)
+        us = detected_pts[:, 1].astype(float)
+
+        xs = us
+        ys = STATE_H - vs
+
+        return np.stack((xs, ys), axis=1)
+
+
     def normalize_floats(self, matrix):
         matrix = 255 * (matrix - np.min(matrix)) / (np.max(matrix) - np.min(matrix))
         return matrix
@@ -133,6 +149,12 @@ class LaneDetection:
 
         self.left_lane = left_lane
         self.right_lane = right_lane
+
+        #return an array of coordinates where the values are non-zero for every lane
+        left_lane_points = np.argwhere(left_lane > 0)
+        right_lane_points = np.argwhere(right_lane > 0)
+
+        return self.align_to_wrapper(left_lane_points), self.align_to_wrapper(right_lane_points)
  
       # self.debug_image = state_image
         pass
