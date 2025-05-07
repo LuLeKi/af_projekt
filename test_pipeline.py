@@ -33,19 +33,21 @@ def run(env, input_controller: InputController):
         trajectory, curvature = path_planning.plan(
             left_lane_boundaries, right_lane_boundaries
         )
-        steering_angle = lateral_control.control(trajectory, info["speed"])
-        target_speed = longitudinal_control.predict_target_speed(curvature)
-        acceleration, braking = longitudinal_control.control(
-            info["speed"], target_speed, steering_angle
-        )
-
+        steering_angle = lateral_control.control(env.unwrapped.car, trajectory, info["speed"])
+        #target_speed = longitudinal_control.predict_target_speed(curvature)
+        target_speed = 3
+        #acceleration, braking = longitudinal_control.control(
+        #    info["speed"], target_speed, steering_angle
+        #)
+        acceleration = 5 if info["speed"] < target_speed else 0
+        braking = 0
         speed_history.append(info["speed"])
         target_speed_history.append(target_speed)
 
         cv_image = np.asarray(lane_detection.debug_image, dtype=np.uint8)
         for point in trajectory:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
-                cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
+                cv_image[96 - int(point[1]), int(point[0])] = [255, 255, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
         cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))

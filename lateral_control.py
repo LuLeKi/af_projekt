@@ -7,21 +7,34 @@ class LateralControl:
         self._car_position = np.array([48, 64])
 
     def get_tangent_angle_at_point(self, trajectory: np.ndarray, index: int) -> float:
-        diff = np.diff(trajectory, axis=0)
-        return diff[index]
+        if len(trajectory) < 2:
+            return np.array([1.0, 0.0])
+
+        if index <= 0:
+            tangent = trajectory[1] - trajectory[0]
+        elif index >= len(trajectory) - 1:
+            tangent = trajectory[-1] - trajectory[-2]
+        else:
+            tangent = trajectory[index + 1] - trajectory[index]
+
+        return tangent / np.linalg.norm(tangent)
+
 
     def angle_between_vectors(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
-        return -np.arccos((np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))))
+        angle = np.arctan2(vec2[1], vec2[0]) - np.arctan2(vec1[1], vec1[0])
+        # Normalize to [-pi, pi]
+        return (angle + np.pi) % (2 * np.pi) - np.pi
 
     def angle_to_vec(self, angle) -> np.ndarray:
         return np.array([np.cos(angle), np.sin(angle)])
 
     def stanley(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
-        K1 = 0.1
-        K2 = 1
-        print(trajectory)
-        print("J", car.hull.angle)
-        
+        K1 = 1
+        K2 = 2
+        Ks = 0.75
+
+        trajectory = np.unique(trajectory, axis=0) 
+        print(trajectory) 
         dists = np.linalg.norm(trajectory - self._car_position, axis=1)
         # Vector from car to closest point
         closest_index = np.argmin(dists)
@@ -33,16 +46,12 @@ class LateralControl:
         cross_error = np.abs(self._car_position - closest_point)[0]
 
         error_vec = closest_point - self._car_position
-        # Normal vector to trajectory direction (rotate tangent by 90 degrees CCW)
-        normal_vec = np.array([-trajectory_tangent_vec[1], trajectory_tangent_vec[0]])
-        # Signed cross track error
+        normal_vec = np.array([ trajectory_tangent_vec[1], -trajectory_tangent_vec[0]])
         cross_error = np.dot(error_vec, normal_vec) 
-
-
 
         if (speed < 1e-5): return 0.0
 
-        steer = K1 * heading_error + np.arctan2((K2 * cross_error), speed)
+        steer = K1 * heading_error + np.arctan2((K2 * cross_error), (Ks + speed))
 
         ressteer = np.clip(steer, -1, 1)
 

@@ -7,6 +7,7 @@ from env_wrapper import CarRacingEnvWrapper
 from input_controller import InputController
 from path_planning import PathPlanning
 from lane_detection import LaneDetection
+from lateral_control import LateralControl
 
 
 def run(env, input_controller: InputController):
@@ -19,36 +20,38 @@ def run(env, input_controller: InputController):
     total_reward = 0.0
 
     while not input_controller.quit:
-        #way_points, curvature = path_planning.plan(
-        #    info["left_lane_boundary"], info["right_lane_boundary"]
-        #)
+        way_points, curvature = path_planning.plan(
+            info["left_lane_boundary"], info["right_lane_boundary"]
+        )
 
-        l, r = lane_detect.detect(state_image)
-        way_points, _ = path_planning.plan(l, r)
+        #l, r = lane_detect.detect(state_image)
+        #way_points, _ = path_planning.plan(l, r)
 
         cv_image = np.asarray(state_image, dtype=np.uint8)
         way_points = np.array(way_points, dtype=np.int32)
         for point in way_points:
-            if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[96 - int(point[1]), int(point[0])] = [255, 255, 255]
+            if 0 < point[0] < 96 and 0 < point[1] < 84:
+                cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
         #for point in info["left_lane_boundary"]:
-        for point in l:
-            if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[96 - int(point[1]), int(point[0])] = [255, 0, 0]
+        for point in info["left_lane_boundary"]:
+            if 0 < point[0] < 96 and 0 < point[1] < 84:
+                cv_image[int(point[1]), int(point[0])] = [255, 0, 0]
         #for point in info["right_lane_boundary"]:
-        for point in r:
-            if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[96 - int(point[1]), int(point[0])] = [0, 0, 255]
+        for point in info["right_lane_boundary"]:
+            if 0 < point[0] < 96 and 0 < point[1] < 84:
+                cv_image[int(point[1]), int(point[0])] = [0, 0, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
         cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
         cv2.imshow("Car Racing - Path Planning", cv_image)
         cv2.waitKey(1)
 
+        steer = LateralControl().control(env.unwrapped.car, way_points, info["speed"])
         # Step the environment
         input_controller.update()
         a = [
-            input_controller.steer,
+            #input_controller.steer,
+            steer,
             input_controller.accelerate,
             input_controller.brake,
         ]
