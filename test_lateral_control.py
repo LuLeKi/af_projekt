@@ -16,11 +16,16 @@ def run(env, input_controller: InputController):
     total_reward = 0.0
 
     while not input_controller.quit:
-        steering_angle = lateral_control.control(info["trajectory"], info["speed"])
+        steering_angle = lateral_control.control(env.unwrapped.car, info["trajectory"], info["speed"])
 
         cv_image = np.asarray(state_image, dtype=np.uint8)
         for point in info["trajectory"]:
-            if 0 < point[0] < 96 and 0 < point[1] < 84:
+            if 0 < point[0] < 96 and 0 < point[1] < 96:
+                cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
+
+        # draw trajectory from lateral control
+        for point in lateral_control.trajectory:
+            if 0 < point[0] < 96 and 0 < point[1] < 96:
                 cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)

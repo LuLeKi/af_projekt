@@ -7,6 +7,7 @@ from env_wrapper import CarRacingEnvWrapper
 from input_controller import InputController
 from path_planning import PathPlanning
 from lane_detection import LaneDetection
+from lateral_control import LateralControl
 
 
 def run(env, input_controller: InputController):
@@ -29,16 +30,16 @@ def run(env, input_controller: InputController):
         cv_image = np.asarray(state_image, dtype=np.uint8)
         way_points = np.array(way_points, dtype=np.int32)
         for point in way_points:
-            if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[96 - int(point[1]), int(point[0])] = [255, 255, 255]
-        #for point in info["left_lane_boundary"]:
+            if 0 < point[0] < 96 and 0 < point[1] < 84:
+                cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
         for point in l:
-            if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[96 - int(point[1]), int(point[0])] = [255, 0, 0]
-        #for point in info["right_lane_boundary"]:
+        #for point in info["left_lane_boundary"]:
+            if 0 < point[0] < 96 and 0 < point[1] < 84:
+                cv_image[int(point[1]), int(point[0])] = [255, 0, 0]
         for point in r:
-            if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[96 - int(point[1]), int(point[0])] = [0, 0, 255]
+        #for point in info["right_lane_boundary"]:
+            if 0 < point[0] < 96 and 0 < point[1] < 84:
+                cv_image[int(point[1]), int(point[0])] = [0, 0, 255]
 
         # Anzeige vorbereiten
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
@@ -49,6 +50,7 @@ def run(env, input_controller: InputController):
         # Step the environment
         input_controller.update()
         a = [
+            #input_controller.steer,
             input_controller.steer,
             input_controller.accelerate,
             input_controller.brake,

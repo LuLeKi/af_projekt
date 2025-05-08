@@ -18,7 +18,6 @@ class LaneDetection:
         pass
 
     def align_to_wrapper(self, detected_pts: np.ndarray) -> np.ndarray:
-        STATE_H = 96
         """
         detected_pts: (N,2) array of (v,row, u,col) in [0..95] state‐pixel coords
         returns:      (N,2) array of (x, y) in same frame as
@@ -27,8 +26,8 @@ class LaneDetection:
         vs = detected_pts[:, 0].astype(float)
         us = detected_pts[:, 1].astype(float)
 
-        xs = us
-        ys = STATE_H - vs
+        xs = vs[::-1] 
+        ys = us[::-1] 
 
         return np.stack((xs, ys), axis=1)
 
@@ -154,7 +153,34 @@ class LaneDetection:
         left_lane_points = np.argwhere(left_lane > 0)
         right_lane_points = np.argwhere(right_lane > 0)
 
+        unique_y = {}
+        for y, x in left_lane_points:
+            unique_y[y] = x
+
+        left_lane_points = np.array([[x, y] for y, x in unique_y.items()])
+        if left_lane_points.size == 0:
+            left_lane_points = np.empty((0, 2))
+
+        unique_y = {}
+        for y, x in right_lane_points:
+            if y not in unique_y or abs(x - unique_y[y]) > 1:
+                unique_y[y] = x
+
+        right_lane_points = np.array([[x, y] for y, x in unique_y.items()])
+        if right_lane_points.size == 0:
+            right_lane_points = np.empty((0, 2)) 
+
+        if left_lane_points.size > 0:
+            left_lane_points = left_lane_points[left_lane_points[:, 1].argsort()]
+            new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 120)
+            left_lane_x = np.interp(new_y, left_lane_points[:, 1], left_lane_points[:, 0])
+            left_lane_points = np.stack((left_lane_x, new_y), axis=1)
+
+        if right_lane_points.size > 0:
+            right_lane_points = right_lane_points[right_lane_points[:, 1].argsort()]
+            new_y = np.linspace(right_lane_points[:, 1].min(), right_lane_points[:, 1].max(), 120)
+            right_lane_x = np.interp(new_y, right_lane_points[:, 1], right_lane_points[:, 0])
+            right_lane_points = np.stack((right_lane_x, new_y), axis=1)
+            
+
         return self.align_to_wrapper(left_lane_points), self.align_to_wrapper(right_lane_points)
- 
-      # self.debug_image = state_image
-        pass
