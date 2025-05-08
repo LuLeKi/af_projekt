@@ -34,13 +34,11 @@ def run(env, input_controller: InputController):
             left_lane_boundaries, right_lane_boundaries
         )
         steering_angle = lateral_control.control(env.unwrapped.car, trajectory, info["speed"])
-        #target_speed = longitudinal_control.predict_target_speed(curvature)
-        target_speed = 3
-        #acceleration, braking = longitudinal_control.control(
-        #    info["speed"], target_speed, steering_angle
-        #)
-        acceleration = 5 if info["speed"] < target_speed else 0
-        braking = 0
+        target_speed = longitudinal_control.predict_target_speed(curvature)
+        #target_speed = 7 
+        acceleration, braking = longitudinal_control.control(
+            info["speed"], target_speed, steering_angle
+        )
         speed_history.append(info["speed"])
         target_speed_history.append(target_speed)
 

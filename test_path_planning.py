@@ -20,24 +20,24 @@ def run(env, input_controller: InputController):
     total_reward = 0.0
 
     while not input_controller.quit:
-        way_points, curvature = path_planning.plan(
-            info["left_lane_boundary"], info["right_lane_boundary"]
-        )
+        #way_points, curvature = path_planning.plan(
+        #    info["left_lane_boundary"], info["right_lane_boundary"]
+        #)
 
-        #l, r = lane_detect.detect(state_image)
-        #way_points, _ = path_planning.plan(l, r)
+        l, r = lane_detect.detect(state_image)
+        way_points, _ = path_planning.plan(l, r)
 
         cv_image = np.asarray(state_image, dtype=np.uint8)
         way_points = np.array(way_points, dtype=np.int32)
         for point in way_points:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
                 cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
+        for point in l:
         #for point in info["left_lane_boundary"]:
-        for point in info["left_lane_boundary"]:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
                 cv_image[int(point[1]), int(point[0])] = [255, 0, 0]
+        for point in r:
         #for point in info["right_lane_boundary"]:
-        for point in info["right_lane_boundary"]:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
                 cv_image[int(point[1]), int(point[0])] = [0, 0, 255]
 
@@ -46,12 +46,11 @@ def run(env, input_controller: InputController):
         cv2.imshow("Car Racing - Path Planning", cv_image)
         cv2.waitKey(1)
 
-        steer = LateralControl().control(env.unwrapped.car, way_points, info["speed"])
         # Step the environment
         input_controller.update()
         a = [
             #input_controller.steer,
-            steer,
+            input_controller.steer,
             input_controller.accelerate,
             input_controller.brake,
         ]
