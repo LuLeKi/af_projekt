@@ -18,7 +18,6 @@ class LaneDetection:
         pass
 
     def align_to_wrapper(self, detected_pts: np.ndarray) -> np.ndarray:
-        STATE_H = 96
         """
         detected_pts: (N,2) array of (v,row, u,col) in [0..95] state‐pixel coords
         returns:      (N,2) array of (x, y) in same frame as
@@ -154,8 +153,6 @@ class LaneDetection:
         left_lane_points = np.argwhere(left_lane > 0)
         right_lane_points = np.argwhere(right_lane > 0)
 
-        len1 = len(left_lane_points) + len(right_lane_points)
-
         unique_y = {}
         for y, x in left_lane_points:
             unique_y[y] = x
@@ -185,9 +182,5 @@ class LaneDetection:
             right_lane_x = np.interp(new_y, right_lane_points[:, 1], right_lane_points[:, 0])
             right_lane_points = np.stack((right_lane_x, new_y), axis=1)
             
-        print("left lane points", left_lane_points)
 
         return self.align_to_wrapper(left_lane_points), self.align_to_wrapper(right_lane_points)
- 
-      # self.debug_image = state_image
-        pass
