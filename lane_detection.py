@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+import time as t
 from scipy.signal import convolve2d
 import matplotlib.pyplot as plt
 
@@ -153,6 +154,8 @@ class LaneDetection:
         left_lane_points = np.argwhere(left_lane > 0)
         right_lane_points = np.argwhere(right_lane > 0)
 
+        
+        t1 = t.time()
         unique_y = {}
         for y, x in left_lane_points:
             unique_y[y] = x
@@ -166,21 +169,22 @@ class LaneDetection:
             if y not in unique_y or abs(x - unique_y[y]) > 1:
                 unique_y[y] = x
 
+        print(f"time: {t.time() - t1}")
+
         right_lane_points = np.array([[x, y] for y, x in unique_y.items()])
         if right_lane_points.size == 0:
             right_lane_points = np.empty((0, 2)) 
 
         if left_lane_points.size > 0:
             left_lane_points = left_lane_points[left_lane_points[:, 1].argsort()]
-            new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 120)
+            new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 100)
             left_lane_x = np.interp(new_y, left_lane_points[:, 1], left_lane_points[:, 0])
             left_lane_points = np.stack((left_lane_x, new_y), axis=1)
 
         if right_lane_points.size > 0:
             right_lane_points = right_lane_points[right_lane_points[:, 1].argsort()]
-            new_y = np.linspace(right_lane_points[:, 1].min(), right_lane_points[:, 1].max(), 120)
+            new_y = np.linspace(right_lane_points[:, 1].min(), right_lane_points[:, 1].max(), 100)
             right_lane_x = np.interp(new_y, right_lane_points[:, 1], right_lane_points[:, 0])
             right_lane_points = np.stack((right_lane_x, new_y), axis=1)
             
-
         return self.align_to_wrapper(left_lane_points), self.align_to_wrapper(right_lane_points)

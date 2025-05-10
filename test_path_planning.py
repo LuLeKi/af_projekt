@@ -25,7 +25,7 @@ def run(env, input_controller: InputController):
         #)
 
         l, r = lane_detect.detect(state_image)
-        way_points, _ = path_planning.plan(l, r)
+        way_points, _, __ = path_planning.plan(l, r)
 
         cv_image = np.asarray(state_image, dtype=np.uint8)
         way_points = np.array(way_points, dtype=np.int32)
