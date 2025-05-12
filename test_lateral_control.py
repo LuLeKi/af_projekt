@@ -24,9 +24,11 @@ def run(env, input_controller: InputController):
                 cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
 
         # draw trajectory from lateral control
-        for point in lateral_control.trajectory:
+        for index, point in enumerate( lateral_control.trajectory):
             if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
+                cv_image[int(point[1]), int(point[0])] = [255, 255, 255] if index != lateral_control.lookahead_index else [0, 255, 0]
+
+
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
         cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
