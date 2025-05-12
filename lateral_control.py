@@ -93,8 +93,8 @@ class LateralControl:
         error_vec = next_point - self._car_position
         normal_vec = np.array([ -trajectory_tangent_vec[1], trajectory_tangent_vec[0]])
         cross_error = np.dot(error_vec, normal_vec) 
-        if abs(cross_error) < 0.2:
-            cross_error = 0.0
+        if abs(cross_error) < 0.2 or abs(heading_error) < 0.2:
+            return 0
 
         if (speed < 1e-2): return 0.0
 

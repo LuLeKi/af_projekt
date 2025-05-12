@@ -11,6 +11,7 @@ class LaneDetection:
     debug_image = None
     left_lane = None
     right_lane = None
+    detected_lane_grad = None
     # for randomize optim calculte histogram and then 
     # improve contrast
     THRESHOLDING_POINT = 50
@@ -84,6 +85,7 @@ class LaneDetection:
 
     def detect(self, state_image):
         # turn image to grayscale
+        self.debug_image = state_image.copy()
         gray_img = np.dot(state_image[...,:3], [0.299, 0.587, 0.114])
         gray_normalized = self.normalize_floats(gray_img) 
 
@@ -115,6 +117,7 @@ class LaneDetection:
 
         # thresholding
         grad = (grad > self.THRESHOLDING_POINT) * grad * (255 / grad)
+        self.detected_lane_grad = [(y, x) for x, y in zip(*np.where(grad > 0))] 
 
         left_x, right_x = -1, -1
         edges = np.where(grad[cary] > 0)[0]
@@ -139,13 +142,7 @@ class LaneDetection:
         # plt.colorbar()
         # mplt.title("Gradient Magnitude with Colormap")
         # plt.show()
-        left_lane_mask = left_lane.astype(bool)[:, :, np.newaxis]
-        right_lane_mask = right_lane.astype(bool)[:, :, np.newaxis]
-        initial_lanes_mask = (grad > 0).astype(bool)[:, :, np.newaxis]
-        lanes_mask = left_lane_mask | right_lane_mask | initial_lanes_mask 
-        self.debug_image = np.where(initial_lanes_mask, np.stack((grad,) * 3, axis=-1) * (1, 1, 1), self.debug_image)
-        self.debug_image = np.where(lanes_mask, np.stack((left_lane,) * 3, axis=-1) * (0, 0, 1), state_image)
-        self.debug_image = np.where(right_lane_mask, np.stack((right_lane,) * 3, axis=-1) * (0, 1, 0), self.debug_image)
+        
 
         self.left_lane = left_lane
         self.right_lane = right_lane
@@ -156,9 +153,27 @@ class LaneDetection:
 
         
         t1 = t.time()
+        #def thin_out_lane(lane_points: np.ndarray) -> np.ndarray:
+        #    min_dist = 2
+        #    lane = [lane_points[0]]
+        #    for point in lane_points[1:]:
+        #        if np.linalg.norm(point - lane[-1]) > min_dist:
+        #            lane.append(point)
+        #    return np.array([point[::-1] for point in lane])
+       
         unique_y = {}
         for y, x in left_lane_points:
-            unique_y[y] = x
+            if y not in unique_y or abs(x - unique_y[y]) > 1:
+                unique_y[y] = x
+        #points = []
+        #seen = {}
+        #for index, (y, x) in enumerate(left_lane_points): 
+        #    if y not in seen:
+        #        seen[y] = x
+        #        points.append((x, y))
+        #        continue
+        #    #elif y in seen and abs(x - seen[y]) > 5:
+        #    #    points.append((x, y))
 
         left_lane_points = np.array([[x, y] for y, x in unique_y.items()])
         if left_lane_points.size == 0:
@@ -169,7 +184,6 @@ class LaneDetection:
             if y not in unique_y or abs(x - unique_y[y]) > 1:
                 unique_y[y] = x
 
-        print(f"time: {t.time() - t1}")
 
         right_lane_points = np.array([[x, y] for y, x in unique_y.items()])
         if right_lane_points.size == 0:
@@ -177,14 +191,22 @@ class LaneDetection:
 
         if left_lane_points.size > 0:
             left_lane_points = left_lane_points[left_lane_points[:, 1].argsort()]
-            new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 100)
+            new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 120)
             left_lane_x = np.interp(new_y, left_lane_points[:, 1], left_lane_points[:, 0])
             left_lane_points = np.stack((left_lane_x, new_y), axis=1)
 
         if right_lane_points.size > 0:
             right_lane_points = right_lane_points[right_lane_points[:, 1].argsort()]
-            new_y = np.linspace(right_lane_points[:, 1].min(), right_lane_points[:, 1].max(), 100)
+            new_y = np.linspace(right_lane_points[:, 1].min(), right_lane_points[:, 1].max(), 120)
             right_lane_x = np.interp(new_y, right_lane_points[:, 1], right_lane_points[:, 0])
             right_lane_points = np.stack((right_lane_x, new_y), axis=1)
+
+        #left_lane_mask = left_lane_points.astype(bool)[:, :, np.newaxis]
+        #right_lane_mask = right_lane_points.astype(bool)[:, :, np.newaxis]
+        #initial_lanes_mask = (grad > 0).astype(bool)[:, :, np.newaxis]
+        #lanes_mask = left_lane_mask | right_lane_mask | initial_lanes_mask 
+        #self.debug_image = np.where(initial_lanes_mask, np.stack((grad,) * 3, axis=-1) * (1, 1, 1), self.debug_image)
+        #self.debug_image = np.where(lanes_mask, np.stack((left_lane,) * 3, axis=-1) * (0, 0, 1), state_image)
+        #self.debug_image = np.where(right_lane_mask, np.stack((right_lane,) * 3, axis=-1) * (0, 1, 0), self.debug_image)
             
         return self.align_to_wrapper(left_lane_points), self.align_to_wrapper(right_lane_points)
