@@ -1,65 +1,131 @@
 import argparse
-
 import gymnasium as gym
 import numpy as np
-from env_wrapper import CarRacingEnvWrapper
+import cv2  
+import atexit
+
 from input_controller import InputController
-from longitudinal_control import LongitudinalControl
 from matplotlib import pyplot as plt
 
-fig = plt.figure()
-plt.ion()
-plt.show()
+from env_wrapper import CarRacingEnvWrapper
+from longitudinal_control import LongitudinalControl
+from path_planning import PathPlanning           
+from lane_detection import LaneDetection         
+from lateral_control import LateralControl      
+
+# Flags für Auswahl der Spurquelle und Lenkregelung
+lane_detection_lanes = False     # True → Lane Detection nutzen, False → env-wrapper
+lateral_control_steering = False # True → Regler, False → manuelle Steuerung (wasd)
+enable_plotting = False
+enable_view_path = False
+
+if enable_plotting:
+    fig = plt.figure()
+    plt.ion()
+    plt.show()
 
 
 def run(env, input_controller: InputController):
+    # Instanziierung der Module
     longitudinal_control = LongitudinalControl()
+    path_planning = PathPlanning()
+    lane_detection = LaneDetection() 
 
+    if lateral_control_steering:
+        lateral_control = LateralControl()
+
+    # Reset-Phase (nach Instanzen, vor Loop)
     seed = int(np.random.randint(0, int(1e6)))
     state_image, info = env.reset(seed=seed)
     total_reward = 0.0
 
     speed_history = []
     target_speed_history = []
+    plot_counter = 0
 
     while not input_controller.quit:
-        target_speed = longitudinal_control.predict_target_speed(
-            info["trajectory"], info["speed"], input_controller.steer
-        )
-        acceleration, braking = longitudinal_control.control(
-            info["speed"], target_speed, input_controller.steer
-        )
+        # Spurquelle wählen (Lane Detection oder Env-Werte)
+        if lane_detection_lanes:
+            left_lane, right_lane = lane_detection.detect(state_image)
+        else:
+            left_lane, right_lane = info["left_lane_boundary"], info["right_lane_boundary"]
+
+        # Trajektorie + Krümmung berechnen
+        trajectory, _, curvature = path_planning.plan(left_lane, right_lane)
+
+        # Lenkwinkel berechnen (manuell oder per Regler)
+        if lateral_control_steering:
+            steering = lateral_control.control(env.unwrapped.car, trajectory, info["speed"])
+        else:
+            steering = input_controller.steer
+
+        # Zielgeschwindigkeit & Reglersteuerung
+        target_speed = longitudinal_control.predict_target_speed(curvature, info["speed"], steering)
+        acceleration, braking = longitudinal_control.control(info["speed"], target_speed, steering)
 
         speed_history.append(info["speed"])
         target_speed_history.append(target_speed)
+        if enable_view_path:
+            visualize_planning_view(state_image, left_lane, right_lane, trajectory)
 
-        # Longitudinal control plot
-        plt.gcf().clear()
-        plt.plot(speed_history, c="green")
-        plt.plot(target_speed_history)
-        try:
-            fig.canvas.flush_events()
-        except:
-            pass
+  
 
-        # Step the environment
+        # Plot-Update
+        if enable_plotting:
+            plot_counter += 1
+            if plot_counter % 4 == 0:  # Alle ~4 Frames ≈ 15 FPS bei 60Hz
+                plt.gcf().clear()
+                plt.plot(speed_history[-200:], c="green", label="Ist-Speed")  # Nur letzte 200 Punkte
+                plt.plot(target_speed_history[-200:], label="Ziel-Speed")
+                plt.legend()
+                try:
+                    fig.canvas.flush_events()
+                except:
+                    pass
+
+        # Nächster Schritt in der Simulation
         input_controller.update()
-        a = [input_controller.steer, acceleration, braking]
+        a = [steering, acceleration, braking]  #steering jetzt aus Bedingung, nicht input_controller.steer direkt
         state_image, r, done, trunc, info = env.step(a)
         total_reward += r
 
-        # Reset environment if the run is skipped
+        # Run ggf. neu starten
         input_controller.update()
         if done or input_controller.skip:
             print(f"seed: {seed:06d}     reward: {total_reward:06.2F}")
-
             input_controller.skip = False
             seed = int(np.random.randint(0, int(1e6)))
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
-
             speed_history = []
             target_speed_history = []
+
+
+def visualize_planning_view(state_image, left_lane, right_lane, trajectory):
+    cv_image = np.asarray(state_image, dtype=np.uint8).copy()
+
+    # Konvertiere alle Punktlisten einmalig zu np.int32
+    trajectory = np.array(trajectory, dtype=np.int32)
+    left_lane = np.array(left_lane, dtype=np.int32)
+    right_lane = np.array(right_lane, dtype=np.int32)
+
+    for point in trajectory:
+        if 0 < point[0] < 96 and 0 < point[1] < 84:
+            cv_image[point[1], point[0]] = [0, 255, 0]  # Grün: optimierte Spur
+
+    for point in left_lane:
+        if 0 < point[0] < 96 and 0 < point[1] < 84:
+            cv_image[point[1], point[0]] = [255, 0, 0]  # Rot: linke Spur
+
+    for point in right_lane:
+        if 0 < point[0] < 96 and 0 < point[1] < 84:
+            cv_image[point[1], point[0]] = [0, 0, 255]  # Blau: rechte Spur
+
+    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+    cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
+    cv2.imshow("Planning View", cv_image)
+    cv2.waitKey(1)
+
 
 
 def main():
@@ -75,6 +141,8 @@ def main():
 
     run(env, input_controller)
     env.reset()
+    if enable_view_path:
+        atexit.register(cv2.destroyAllWindows)
 
 
 if __name__ == "__main__":

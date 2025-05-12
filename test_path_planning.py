@@ -16,9 +16,7 @@ from input_controller import InputController
 from path_planning import PathPlanning
 
 
-### Set True if wanna use lanes out of lane detection
-### Set False if wanna use lanes out of env wrapper
-lane_detection_lanes = True
+lane_detection_lanes = False     # True → Lane Detection nutzen, False → env-wrapper
 
 
 
