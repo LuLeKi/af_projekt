@@ -1,58 +1,93 @@
 import numpy as np
-import time
 
 class LongitudinalControl:
     def __init__(self):
-        self.kp = 0.6
-        self.ki = 0.1
-        self.kd = 0.02
+            # PID Basiswerte
+            self.Kp_base = 0.05
+            self.Ki_base = 0.005
+            self.Kd_base = 0.01
 
-        self.integral = 0.0
-        self.last_error = 0.0
-        self.last_time = time.time()
-        self.last_throttle = 0.0
+            # PID aktive Werte
+            self.Kp = self.Kp_base
+            self.Ki = self.Ki_base
+            self.Kd = self.Kd_base
 
-        self.brake_strength_multiplier = 1.6  # WICHTIG: war vorher nicht definiert
+            # Fehlertracking
+            self.error = 0.0
+            self.integral = 0.0
+            self.last_error = 0.0
 
-        self.max_speed = 80.0
-        self.min_speed = 35.0
+            # === Parameter für Anpassung ===
+            self.max_speed = 60
+            self.min_speed = 30
 
-    def control(self, current_speed: float, curvature: np.ndarray, is_in_curve: bool) -> tuple:
-        throttle = 0.0
-        brake = 0.0
+            self.brake_threshold = 3.0  # Nur wenn wir >3 km/h über Zielspeed sind, bremsen
 
-        # Zielgeschwindigkeit abhängig von Kurve
-        curve_score = np.clip(np.max(np.abs(curvature)) * 25, 0.0, 1.0)
-        base_target = self.max_speed - (self.max_speed - self.min_speed) * curve_score
 
-        if not is_in_curve:
-            base_target = max(base_target, 40.0)
+            self.steering_threshold = 0.5  # bei 0.5 beginnt max Dämpfung durch Lenkung
+            self.low_speed_threshold = 20
+            self.low_speed_penalty_max = 10
 
-        # PID-Regelung
-        now = time.time()
-        dt = max(now - self.last_time, 0.01)
-        error = base_target - current_speed
-        self.integral += error * dt
-        derivative = (error - self.last_error) / dt
-        pid = self.kp * error + self.ki * self.integral + self.kd * derivative
+            self.integral_limit = (-10, 10)
 
-        if pid > 0:
-            raw_throttle = np.clip(np.tanh(pid), 0.0, 1.0)
 
-            if is_in_curve:
-                max_curv = np.max(np.abs(curvature))
-                curve_factor = np.clip(1.0 - max_curv * 50, 0.3, 1.0)
-                max_throttle = curve_factor
+    def predict_target_speed(self, curvature: float, steering_angle: float, speed: float) -> float:
+        max_speed = self.max_speed
+        min_speed = self.min_speed
+
+        # Krümmungsfaktor (aus Path Planning)
+        curvature_factor = min(abs(curvature), 1.0)
+
+        # Steuerfaktor: ab 0.3 deutliches Lenken
+        steering_factor = min(abs(steering_angle) / self.steering_threshold, 1.0)
+
+        # Kombinierter Faktor (konservativ: max nehmen)
+        combined_factor = max(curvature_factor, steering_factor)
+
+        # Basis-Zielgeschwindigkeit
+        target_speed = self.max_speed - combined_factor * (self.max_speed - self.min_speed)
+
+        # Zusätzliche Dämpfung bei niedriger Geschwindigkeit
+        if speed < self.low_speed_threshold:
+            penalty_ratio = (self.low_speed_threshold - speed) / self.low_speed_threshold
+            target_speed -= penalty_ratio * self.low_speed_penalty_max
+            target_speed = max(target_speed, self.min_speed)
+
+        # Dynamische PID-Anpassung
+        self.Kp = self.Kp_base * (1 + combined_factor)
+        self.Ki = self.Ki_base * (1 + 0.5 * combined_factor)
+        self.Kd = self.Kd_base * (1 + 0.5 * combined_factor)
+
+        return target_speed
+
+
+    def control(self, speed: float, target_speed: float, steering_angle: float) -> tuple[float, float]:
+            error = target_speed - speed
+            self.integral += error
+            derivative = error - self.last_error
+            self.last_error = error
+
+            self.integral = np.clip(self.integral, *self.integral_limit)
+
+            output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+
+            steering_penalty = np.cos(abs(steering_angle) * np.pi / 2) ** 2
+
+            if speed > target_speed:
+                delta = speed - target_speed
+                if delta > self.brake_threshold:
+                    braking = np.clip(delta / target_speed, 0, 1)
+                    acceleration = 0
+                    braking /= steering_penalty
+                else:
+                    acceleration = 0  # rollen lassen
+                    braking = 0
             else:
-                max_throttle = 1.0
+                acceleration = np.clip(output, 0, 1)
+                braking = 0
 
-            throttle = min(raw_throttle, max_throttle)
-            throttle = min(throttle, self.last_throttle + 0.05)
-        else:
-            brake = np.clip(-pid * self.brake_strength_multiplier, 0.0, 1.0)
 
-        self.last_throttle = throttle
-        self.last_error = error
-        self.last_time = now
+            acceleration *= steering_penalty
 
-        return throttle, brake
+            return acceleration, braking
+
