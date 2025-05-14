@@ -78,10 +78,10 @@ class LateralControl:
         closest_index = np.argmin(dists)
         #closest_point = trajectory[closest_index]
         lookahead_index =  min(closest_index + 2, max(len(trajectory) - 1, 0)) 
-        print(f"trajectory: {trajectory}")
+        # print(f"trajectory: {trajectory}")
         # Loop forward through the trajectory
         self.lookahead_index = lookahead_index
-        print(f"closest_index: {closest_index} lookahead_index: {lookahead_index}")
+        # print(f"closest_index: {closest_index} lookahead_index: {lookahead_index}")
         next_point = trajectory[lookahead_index] 
         self.next_point = next_point
 
@@ -107,15 +107,15 @@ class LateralControl:
         steer = np.clip(steer, -max_steer, max_steer)
 
         # generate debug prints for all relevant variables
-        print(f"car_position: {self._car_position}")
-        print(f"next_point: {next_point}")
-        print(f"trajectory_tangent_vec: {trajectory_tangent_vec}")
-        print(f"k2_effective: {K2_effective}")
-        print(f"heading_error: {heading_error}")
-        print(f"cross_error: {cross_error}")
-        print(f"steer: {steer}")
-        print(f"max_steer: {max_steer}")
-        print(f"traj len: {len(trajectory)}")
+        # print(f"car_position: {self._car_position}")
+        # print(f"next_point: {next_point}")
+        # print(f"trajectory_tangent_vec: {trajectory_tangent_vec}")
+        # print(f"k2_effective: {K2_effective}")
+        # print(f"heading_error: {heading_error}")
+        # print(f"cross_error: {cross_error}")
+        # print(f"steer: {steer}")
+        # print(f"max_steer: {max_steer}")
+        # print(f"traj len: {len(trajectory)}")
 
         return steer 
     

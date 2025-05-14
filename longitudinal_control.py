@@ -1,7 +1,9 @@
 import numpy as np
+import time
 
 class LongitudinalControl:
     def __init__(self):
+            self.last_debug_time = 0
             # PID Basiswerte
             self.Kp_base = 0.05
             self.Ki_base = 0.005
@@ -24,7 +26,7 @@ class LongitudinalControl:
             self.brake_threshold = 3.0  # Nur wenn wir >3 km/h über Zielspeed sind, bremsen
 
 
-            self.steering_threshold = 0.5  # bei 0.5 beginnt max Dämpfung durch Lenkung
+            self.steering_threshold = 1.0  # bei 0.5 beginnt max Dämpfung durch Lenkung
             self.low_speed_threshold = 20
             self.low_speed_penalty_max = 10
 
@@ -32,17 +34,16 @@ class LongitudinalControl:
 
 
     def predict_target_speed(self, curvature: float, steering_angle: float, speed: float) -> float:
-        max_speed = self.max_speed
-        min_speed = self.min_speed
-
         # Krümmungsfaktor (aus Path Planning)
-        curvature_factor = min(abs(curvature), 1.0)
+        # curvature_factor = min(abs(curvature), 1.0)
+        curvature_factor = abs(curvature)
 
         # Steuerfaktor: ab 0.3 deutliches Lenken
         steering_factor = min(abs(steering_angle) / self.steering_threshold, 1.0)
 
         # Kombinierter Faktor (konservativ: max nehmen)
-        combined_factor = max(curvature_factor, steering_factor)
+        combined_factor = 0.0 if abs(steering_angle) < 1e-3 else max(curvature_factor, steering_factor)
+
 
         # Basis-Zielgeschwindigkeit
         target_speed = self.max_speed - combined_factor * (self.max_speed - self.min_speed)
@@ -88,6 +89,20 @@ class LongitudinalControl:
 
 
             acceleration *= steering_penalty
+            # === DEBUG-AUSGABE ALLE 0.5s ===
+            now = time.time()
+            if now - self.last_debug_time > 0.5:
+                self.last_debug_time = now
+                reason = "neutral"
+                if speed > target_speed:
+                    delta = speed - target_speed
+                    if delta > self.brake_threshold:
+                        reason = f"brake: delta={delta:.1f} > threshold={self.brake_threshold} → braking={braking:.2f}"
+                    else:
+                        reason = f"coast: delta={delta:.1f} → no brake"
+                elif acceleration > 0:
+                    reason = f"accelerate: acc={acceleration:.2f} (steering_penalty={steering_penalty:.2f})"
+                print(f"[LongCtrl] speed={speed:.1f}, target={target_speed:.1f}, steer={steering_angle:.2f} → {reason}")
 
             return acceleration, braking
 
