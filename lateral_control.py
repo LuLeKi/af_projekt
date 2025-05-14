@@ -59,65 +59,63 @@ class LateralControl:
         return np.array([np.cos(angle), np.sin(angle)])
 
     def stanley(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
-
         K1 = 0.05
         K2 = 1.9
         Ks = 0.8
 
         max_cross_error = 10
-        max_steer = 1 
+        max_steer = 1
 
-        trajectory = np.unique(trajectory, axis=0) 
-        # sort trajectory by y from highest to lowest
-        trajectory = trajectory[np.argsort(trajectory[:, 1])[::-1]] 
+        # === Robustheitsprüfung Trajektorie ===
+        try:
+            trajectory = np.asarray(trajectory)
+        except Exception as e:
+            print(f"[ERROR] Trajektorie unkonvertierbar: {e}")
+            return 0.0
+
+        if trajectory.ndim != 2 or trajectory.shape[1] != 2 or len(trajectory) < 2:
+            print("[WARN] Ungültige Trajektorie – Rückgabe 0.0")
+            return 0.0
+
+        # === Weiter mit regulärer Stanley-Logik ===
+        trajectory = np.unique(trajectory, axis=0)
+        trajectory = trajectory[np.argsort(trajectory[:, 1])[::-1]]
         self.trajectory = trajectory
 
-        # Original trajectory: shape (N, 2)
         dists = np.linalg.norm(trajectory - self._car_position, axis=1)
-        # Vector from car to closest point
         closest_index = np.argmin(dists)
-        #closest_point = trajectory[closest_index]
-        lookahead_index =  min(closest_index + 2, max(len(trajectory) - 1, 0)) 
-        print(f"trajectory: {trajectory}")
-        # Loop forward through the trajectory
+        lookahead_index = min(closest_index + 2, max(len(trajectory) - 1, 0))
         self.lookahead_index = lookahead_index
-        print(f"closest_index: {closest_index} lookahead_index: {lookahead_index}")
-        next_point = trajectory[lookahead_index] 
+
+        next_point = trajectory[lookahead_index]
         self.next_point = next_point
 
-        trajectory_tangent_vec = self.get_tangent_at_point(trajectory, lookahead_index )
+        trajectory_tangent_vec = self.get_tangent_at_point(trajectory, lookahead_index)
         self.tangent = trajectory_tangent_vec
 
-        heading_error = self.angle_between_vectors(trajectory_tangent_vec, self.angle_to_vec(car.hull.angle)) 
+        heading_error = self.angle_between_vectors(
+            trajectory_tangent_vec,
+            self.angle_to_vec(car.hull.angle)
+        )
 
         error_vec = next_point - self._car_position
-        normal_vec = np.array([ -trajectory_tangent_vec[1], trajectory_tangent_vec[0]])
-        cross_error = np.dot(error_vec, normal_vec) 
-        if abs(cross_error) < 0.2 or abs(heading_error) < 0.2:
-            return 0
+        normal_vec = np.array([-trajectory_tangent_vec[1], trajectory_tangent_vec[0]])
+        cross_error = np.dot(error_vec, normal_vec)
 
-        if (speed < 1e-2): return 0.0
+        if abs(cross_error) < 0.2 or abs(heading_error) < 0.2:
+            return 0.0
+
+        if speed < 1e-2:
+            return 0.0
 
         cross_error = np.clip(cross_error, -max_cross_error, max_cross_error)
-
-
-        # adapt K2 according to speed by formula: K2 = K2 * (1 - np.exp(-speed / 10))
         K2_effective = K2 * (1 - np.exp(-abs(cross_error) / 3))
+
         steer = np.arctan2(K2_effective * cross_error, speed + Ks + 1) + heading_error * K1
         steer = np.clip(steer, -max_steer, max_steer)
 
-        # generate debug prints for all relevant variables
-        print(f"car_position: {self._car_position}")
-        print(f"next_point: {next_point}")
-        print(f"trajectory_tangent_vec: {trajectory_tangent_vec}")
-        print(f"k2_effective: {K2_effective}")
-        print(f"heading_error: {heading_error}")
-        print(f"cross_error: {cross_error}")
-        print(f"steer: {steer}")
-        print(f"max_steer: {max_steer}")
-        print(f"traj len: {len(trajectory)}")
-
-        return steer 
+        return steer
+ 
     
     def control(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
         return self.stanley(car, trajectory, speed)
