@@ -77,7 +77,6 @@ class LateralControl:
             return self.last_steer
 
         if len(trajectory) == 0:
-            print("here")
             return self.last_steer
         if trajectory is None:
             return self.last_steer
@@ -89,13 +88,16 @@ class LateralControl:
         trajectory = trajectory[np.argsort(trajectory[:, 1])[::-1]] 
         self.trajectory = trajectory
 
+
         dists = np.linalg.norm(trajectory - self._car_position, axis=1)
         closest_index = np.argmin(dists)
         lookahead_index = min(closest_index + 2, max(len(trajectory) - 1, 0))
         self.lookahead_index = lookahead_index
 
+
         next_point = trajectory[lookahead_index]
         self.next_point = next_point
+
 
         trajectory_tangent_vec = self.get_tangent_at_point(trajectory, lookahead_index)
         self.tangent = trajectory_tangent_vec
@@ -109,7 +111,7 @@ class LateralControl:
         normal_vec = np.array([-trajectory_tangent_vec[1], trajectory_tangent_vec[0]])
         cross_error = np.dot(error_vec, normal_vec)
 
-        if abs(cross_error) < 0.2 or abs(heading_error) < 0.2:
+        if abs(cross_error) < 0.4:
             return 0.0
 
         if speed < 1e-2:
