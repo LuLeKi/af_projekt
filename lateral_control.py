@@ -11,6 +11,7 @@ class LateralControl:
     history = None
     tangent = None
     lookahead_index = 0
+    last_steer = 0
 
     def __init__(self):
         self._car_position = np.array([48, 64])
@@ -66,20 +67,21 @@ class LateralControl:
         max_cross_error = 10
         max_steer = 1
 
-        # === Robustheitsprüfung Trajektorie ===
-        try:
-            trajectory = np.asarray(trajectory)
-        except Exception as e:
-            print(f"[ERROR] Trajektorie unkonvertierbar: {e}")
-            return 0.0
+        if isinstance(trajectory, tuple):
+            trajectory = np.vstack(trajectory[0])
+        else:
+            trajectory = np.array(trajectory)
 
-        if trajectory.ndim != 2 or trajectory.shape[1] != 2 or len(trajectory) < 2:
-            print("[WARN] Ungültige Trajektorie – Rückgabe 0.0")
-            return 0.0
+        if trajectory is None:
+            print("herre")
+            return self.last_steer
+        if trajectory.ndim != 2 or trajectory.shape[1] != 2:
+            print("here")
+            return self.last_steer
 
-        # === Weiter mit regulärer Stanley-Logik ===
-        trajectory = np.unique(trajectory, axis=0)
-        trajectory = trajectory[np.argsort(trajectory[:, 1])[::-1]]
+        trajectory = np.unique(trajectory, axis=0) 
+        # sort trajectory by y from highest to lowest
+        trajectory = trajectory[np.argsort(trajectory[:, 1])[::-1]] 
         self.trajectory = trajectory
 
         dists = np.linalg.norm(trajectory - self._car_position, axis=1)
@@ -114,8 +116,19 @@ class LateralControl:
         steer = np.arctan2(K2_effective * cross_error, speed + Ks + 1) + heading_error * K1
         steer = np.clip(steer, -max_steer, max_steer)
 
-        return steer
- 
+        # generate debug prints for all relevant variables
+        print(f"car_position: {self._car_position}")
+        print(f"next_point: {next_point}")
+        print(f"trajectory_tangent_vec: {trajectory_tangent_vec}")
+        print(f"k2_effective: {K2_effective}")
+        print(f"heading_error: {heading_error}")
+        print(f"cross_error: {cross_error}")
+        print(f"steer: {steer}")
+        print(f"max_steer: {max_steer}")
+        print(f"traj len: {len(trajectory)}")
+
+        self.last_steer = steer
+        return steer 
     
     def control(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
         return self.stanley(car, trajectory, speed)

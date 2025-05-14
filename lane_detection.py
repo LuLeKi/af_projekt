@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import time as t
 from scipy.signal import convolve2d
+from scipy.ndimage import label
 import matplotlib.pyplot as plt
 
 
@@ -119,61 +120,41 @@ class LaneDetection:
         grad = (grad > self.THRESHOLDING_POINT) * grad * (255 / grad)
         self.detected_lane_grad = [(y, x) for x, y in zip(*np.where(grad > 0))] 
 
-        left_x, right_x = -1, -1
-        edges = np.where(grad[cary] > 0)[0]
-        if len(edges) >= 2:
-            left_x = edges[0]     # leftmost
-            right_x = edges[-1]    # rightmost
+        labeled_mask, num_features = label(grad > 0, structure=np.ones((3, 3)))
+        print(num_features)
+        min_dists = []
+        for i in range(1, num_features + 1):
+            mask = labeled_mask == i
+            coords = np.argwhere(mask)
+            car_pos = np.array([cary + 6, carx])
+            dists = np.linalg.norm(coords - car_pos, axis=1)
+            min_dist = np.min(dists)
+            min_dists.append([i, min_dist])
+
+        min_dists.sort(key=lambda x: x[1])
+        print(min_dists)
+
+        if len(min_dists) >= 1:
+            left_mask = labeled_mask == min_dists[0][0]
         else:
-            # fallback if not enough edges
-            left_x, right_x = -1, -1
+            left_mask = np.empty((0, 2))
 
-        #left_lane = self.grow_region(grad, (cary, left_x), structure=np.ones((3, 3), dtype=bool))
-        #right_lane = self.grow_region(grad, (cary, right_x), structure=np.ones((3, 3), dtype=bool))
-        left_lane = self.grow(grad, (cary, left_x))
-        right_lane = self.grow(grad, (cary, right_x))
+        if len(min_dists) >= 2:
+            right_mask = labeled_mask == min_dists[1][0]
+        else:
+            right_mask = np.empty((0, 2))
 
-        # left_lane = self.reconstruct_from_seed(grad, (cary, left_x))
-        # right_lane = self.reconstruct_from_seed(grad, (cary, right_x))
-        # rescale in the end
-        # gray_normalized = grad.astype(np.uint8)
-
-        # plt.imshow(gray_normalized, cmap='jet')
-        # plt.colorbar()
-        # mplt.title("Gradient Magnitude with Colormap")
-        # plt.show()
-        
-
-        self.left_lane = left_lane
-        self.right_lane = right_lane
+        self.left_lane = left_mask
+        self.right_lane = right_mask
 
         #return an array of coordinates where the values are non-zero for every lane
-        left_lane_points = np.argwhere(left_lane > 0)
-        right_lane_points = np.argwhere(right_lane > 0)
+        left_lane_points = np.argwhere(left_mask > 0)
+        right_lane_points = np.argwhere(right_mask > 0)
 
-        
-        t1 = t.time()
-        #def thin_out_lane(lane_points: np.ndarray) -> np.ndarray:
-        #    min_dist = 2
-        #    lane = [lane_points[0]]
-        #    for point in lane_points[1:]:
-        #        if np.linalg.norm(point - lane[-1]) > min_dist:
-        #            lane.append(point)
-        #    return np.array([point[::-1] for point in lane])
-       
         unique_y = {}
         for y, x in left_lane_points:
             if y not in unique_y or abs(x - unique_y[y]) > 1:
                 unique_y[y] = x
-        #points = []
-        #seen = {}
-        #for index, (y, x) in enumerate(left_lane_points): 
-        #    if y not in seen:
-        #        seen[y] = x
-        #        points.append((x, y))
-        #        continue
-        #    #elif y in seen and abs(x - seen[y]) > 5:
-        #    #    points.append((x, y))
 
         left_lane_points = np.array([[x, y] for y, x in unique_y.items()])
         if left_lane_points.size == 0:
@@ -184,20 +165,19 @@ class LaneDetection:
             if y not in unique_y or abs(x - unique_y[y]) > 1:
                 unique_y[y] = x
 
-
         right_lane_points = np.array([[x, y] for y, x in unique_y.items()])
         if right_lane_points.size == 0:
             right_lane_points = np.empty((0, 2)) 
 
         if left_lane_points.size > 0:
             left_lane_points = left_lane_points[left_lane_points[:, 1].argsort()]
-            new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 120)
+            new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 250)
             left_lane_x = np.interp(new_y, left_lane_points[:, 1], left_lane_points[:, 0])
             left_lane_points = np.stack((left_lane_x, new_y), axis=1)
 
         if right_lane_points.size > 0:
             right_lane_points = right_lane_points[right_lane_points[:, 1].argsort()]
-            new_y = np.linspace(right_lane_points[:, 1].min(), right_lane_points[:, 1].max(), 120)
+            new_y = np.linspace(right_lane_points[:, 1].min(), right_lane_points[:, 1].max(), 250)
             right_lane_x = np.interp(new_y, right_lane_points[:, 1], right_lane_points[:, 0])
             right_lane_points = np.stack((right_lane_x, new_y), axis=1)
 
