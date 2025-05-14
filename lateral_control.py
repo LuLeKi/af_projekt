@@ -68,16 +68,20 @@ class LateralControl:
         max_cross_error = 10
         max_steer = 1
 
-        if isinstance(trajectory, tuple):
-            trajectory = np.vstack(trajectory[0])
-        else:
-            trajectory = np.array(trajectory)
+        try:
+            if isinstance(trajectory, tuple):
+                trajectory = np.vstack(trajectory[0])
+            else:
+                trajectory = np.array(trajectory)
+        except:
+            return self.last_steer
 
+        if len(trajectory) == 0:
+            print("here")
+            return self.last_steer
         if trajectory is None:
-            print("herre")
             return self.last_steer
         if trajectory.ndim != 2 or trajectory.shape[1] != 2:
-            print("here")
             return self.last_steer
 
         trajectory = np.unique(trajectory, axis=0) 
