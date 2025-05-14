@@ -2,7 +2,7 @@ import numpy as np
 from scipy.interpolate import splprep, splev 
 import matplotlib.pyplot as plt
 
-PRINT_DEBUG = 1
+PRINT_DEBUG = 0
 
 class LateralControl:
 
