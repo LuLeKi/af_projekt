@@ -201,6 +201,10 @@ class LaneDetection:
             right_lane_x = np.interp(new_y, right_lane_points[:, 1], right_lane_points[:, 0])
             right_lane_points = np.stack((right_lane_x, new_y), axis=1)
 
+        left_lane_points = left_lane_points[np.argsort(left_lane_points[:, 1])]
+        right_lane_points = right_lane_points[np.argsort(right_lane_points[:, 1])]
+
+
         #left_lane_mask = left_lane_points.astype(bool)[:, :, np.newaxis]
         #right_lane_mask = right_lane_points.astype(bool)[:, :, np.newaxis]
         #initial_lanes_mask = (grad > 0).astype(bool)[:, :, np.newaxis]

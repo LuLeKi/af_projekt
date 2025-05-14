@@ -14,7 +14,7 @@ from lane_detection import LaneDetection
 from lateral_control import LateralControl      
 
 # Flags für Auswahl der Spurquelle und Lenkregelung
-lane_detection_lanes = False    # True → Lane Detection nutzen, False → env-wrapper
+lane_detection_lanes = True    # True → Lane Detection nutzen, False → env-wrapper
 lateral_control_steering = True # True → Regler, False → manuelle Steuerung (wasd)
 enable_plotting = False
 enable_view_path = True
@@ -105,7 +105,11 @@ def visualize_planning_view(state_image, left_lane, right_lane, trajectory):
     cv_image = np.asarray(state_image, dtype=np.uint8).copy()
 
     # Konvertiere alle Punktlisten einmalig zu np.int32
-    trajectory = np.array(trajectory, dtype=np.int32)
+    try:
+        trajectory = np.array(trajectory, dtype=np.int32)
+    except Exception as e:
+        print(f"[ERROR] Visualisierung: Ungültige Trajektorie - {e}")
+        trajectory = np.empty((0, 2), dtype=np.int32)
     left_lane = np.array(left_lane, dtype=np.int32)
     right_lane = np.array(right_lane, dtype=np.int32)
 

@@ -4,6 +4,11 @@ from scipy.interpolate import splprep, splev
 class PathPlanning:
     def __init__(self):
         """Initialisiert Parameter für Pfadplanung, Glättung und Krümmungsanalyse."""
+
+        self.last_valid_trajectory = None
+        self.last_valid_local_path = None
+        self.last_valid_curvature = 0.0
+
         self.vehicle_position = np.array([48.0, 64.0])
         # Für Basisspur
         self.trajectory_scalar = 500
@@ -28,6 +33,19 @@ class PathPlanning:
         """Plant eine optimierte Trajektorie zwischen linker und rechter Spurmarkierung."""
         # 1. berechne midpoints
         path_waypoints = self.build_waypoints(left_lane, right_lane)
+
+        if path_waypoints is None or len(path_waypoints) < 3:
+            print("[WARN] Leere oder zu kurze Wegpunktliste.")
+            if (
+                self.last_valid_trajectory is None or
+                not isinstance(self.last_valid_trajectory, np.ndarray) or
+                self.last_valid_trajectory.ndim != 2 or
+                self.last_valid_trajectory.shape[1] != 2
+            ):
+                return np.empty((0, 2)), np.empty((0, 2)), 0.0
+            return self.last_valid_trajectory, self.last_valid_local_path, self.last_valid_curvature
+
+
         # 2. erstelle und glätte funktion aus midpoints
         path_trajectory, spline_model, u_fine = self.build_trajectory(path_waypoints, False)
         # 3 . berechne krümmung an jedem mittelpunkt
@@ -43,8 +61,14 @@ class PathPlanning:
         # 8. erstelle und glätte funktion aus optimierten midpoints
         optimized_local_path = self.build_trajectory(optimized_local_waypoints, True)
 
-        # export unoptimierten local path für debug auf test_path_planning
-        return optimized_local_path, local_path, normalized_curvature   
+
+        # 9. letzte gültige Werte speichern
+        self.last_valid_trajectory = optimized_local_path
+        self.last_valid_local_path = local_path
+        self.last_valid_curvature = normalized_curvature
+
+        # Rückgabe
+        return optimized_local_path, local_path, normalized_curvature  
 
     def build_waypoints(self, left_lane, right_lane):
         """Berechnet mittlere Spurpunkte zwischen linker und rechter Spurbegrenzung."""
@@ -77,7 +101,7 @@ class PathPlanning:
     def calculate_curvature(self, spline_model, u_fine):
         """Berechnet die Krümmung der Trajektorie auf Basis des Spline-Modells."""
         if spline_model is None or u_fine is None:
-            return 0.0
+            return np.array([])  # ← richtiges Format, kein float!
         dx, dy = splev(u_fine, spline_model, der=1)
         ddx, ddy = splev(u_fine, spline_model, der=2)
         curvature = (dx * ddy - dy * ddx) / np.power(dx**2 + dy**2, 1.5)
@@ -85,7 +109,7 @@ class PathPlanning:
 
     def normalize_curvature(self, curvature):
         """Normiert die mittlere Krümmung auf einen Bereich von -1 bis 1."""
-        if curvature is None or len(curvature) == 0:
+        if not isinstance(curvature, np.ndarray) or curvature.size == 0:
             return 0.0
         median_curv = np.median(curvature)
         threshold = self.curvature_clip_threshold
