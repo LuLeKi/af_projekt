@@ -2,6 +2,7 @@ import numpy as np
 from scipy.interpolate import splprep, splev 
 import matplotlib.pyplot as plt
 
+PRINT_DEBUG = 1
 
 class LateralControl:
 
@@ -116,16 +117,17 @@ class LateralControl:
         steer = np.arctan2(K2_effective * cross_error, speed + Ks + 1) + heading_error * K1
         steer = np.clip(steer, -max_steer, max_steer)
 
-        # generate debug prints for all relevant variables
-        print(f"car_position: {self._car_position}")
-        print(f"next_point: {next_point}")
-        print(f"trajectory_tangent_vec: {trajectory_tangent_vec}")
-        print(f"k2_effective: {K2_effective}")
-        print(f"heading_error: {heading_error}")
-        print(f"cross_error: {cross_error}")
-        print(f"steer: {steer}")
-        print(f"max_steer: {max_steer}")
-        print(f"traj len: {len(trajectory)}")
+        if (PRINT_DEBUG):
+            # generate debug prints for all relevant variables
+            print(f"car_position: {self._car_position}")
+            print(f"next_point: {next_point}")
+            print(f"trajectory_tangent_vec: {trajectory_tangent_vec}")
+            print(f"k2_effective: {K2_effective}")
+            print(f"heading_error: {heading_error}")
+            print(f"cross_error: {cross_error}")
+            print(f"steer: {steer}")
+            print(f"max_steer: {max_steer}")
+            print(f"traj len: {len(trajectory)}")
 
         self.last_steer = steer
         return steer 
