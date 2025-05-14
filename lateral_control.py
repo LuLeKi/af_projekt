@@ -74,8 +74,10 @@ class LateralControl:
             trajectory = np.array(trajectory)
 
         if trajectory is None:
+            print("herre")
             return self.last_steer
         if trajectory.ndim != 2 or trajectory.shape[1] != 2:
+            print("here")
             return self.last_steer
 
         trajectory = np.unique(trajectory, axis=0) 
