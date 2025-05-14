@@ -121,7 +121,6 @@ class LaneDetection:
         self.detected_lane_grad = [(y, x) for x, y in zip(*np.where(grad > 0))] 
 
         labeled_mask, num_features = label(grad > 0, structure=np.ones((3, 3)))
-        print(num_features)
         min_dists = []
         for i in range(1, num_features + 1):
             mask = labeled_mask == i
@@ -132,7 +131,6 @@ class LaneDetection:
             min_dists.append([i, min_dist])
 
         min_dists.sort(key=lambda x: x[1])
-        print(min_dists)
 
         if len(min_dists) >= 1:
             left_mask = labeled_mask == min_dists[0][0]
