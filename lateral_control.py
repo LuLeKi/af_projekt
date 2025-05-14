@@ -11,6 +11,7 @@ class LateralControl:
     history = None
     tangent = None
     lookahead_index = 0
+    last_steer = 0
 
     def __init__(self):
         self._car_position = np.array([48, 64])
@@ -59,7 +60,7 @@ class LateralControl:
         return np.array([np.cos(angle), np.sin(angle)])
 
     def stanley(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
-
+        print(trajectory)
         K1 = 0.05
         K2 = 1.9
         Ks = 0.8
@@ -67,6 +68,15 @@ class LateralControl:
         max_cross_error = 10
         max_steer = 1 
 
+        if isinstance(trajectory, tuple):
+            trajectory = np.vstack(trajectory[0])
+        else:
+            trajectory = np.array(trajectory)
+
+        if trajectory is None:
+            return self.last_steer
+        if trajectory.ndim != 2 or trajectory.shape[1] != 2:
+            return self.last_steer
         trajectory = np.unique(trajectory, axis=0) 
         # sort trajectory by y from highest to lowest
         trajectory = trajectory[np.argsort(trajectory[:, 1])[::-1]] 
@@ -93,7 +103,7 @@ class LateralControl:
         error_vec = next_point - self._car_position
         normal_vec = np.array([ -trajectory_tangent_vec[1], trajectory_tangent_vec[0]])
         cross_error = np.dot(error_vec, normal_vec) 
-        if abs(cross_error) < 0.2 or abs(heading_error) < 0.2:
+        if abs(cross_error) < 0.3 or abs(heading_error) < 0.3:
             return 0
 
         if (speed < 1e-2): return 0.0
@@ -117,8 +127,9 @@ class LateralControl:
         print(f"max_steer: {max_steer}")
         print(f"traj len: {len(trajectory)}")
 
+        self.last_steer = steer
         return steer 
     
     def control(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
-        return self.stanley(car, trajectory, speed)
+       return self.stanley(car, trajectory, speed)
 
