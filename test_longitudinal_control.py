@@ -14,8 +14,8 @@ from lane_detection import LaneDetection
 from lateral_control import LateralControl      
 
 # Flags für Auswahl der Spurquelle und Lenkregelung
-lane_detection_lanes = False     # True → Lane Detection nutzen, False → env-wrapper
-lateral_control_steering = False # True → Regler, False → manuelle Steuerung (wasd)
+lane_detection_lanes = True     # True → Lane Detection nutzen, False → env-wrapper
+lateral_control_steering = True # True → Regler, False → manuelle Steuerung (wasd)
 enable_plotting = False
 enable_view_path = False
 

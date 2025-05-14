@@ -11,6 +11,7 @@ class LateralControl:
     history = None
     tangent = None
     lookahead_index = 0
+    last_steer = 0
 
     def __init__(self):
         self._car_position = np.array([48, 64])
@@ -67,6 +68,16 @@ class LateralControl:
         max_cross_error = 10
         max_steer = 1 
 
+        if isinstance(trajectory, tuple):
+            trajectory = np.vstack(trajectory[0])
+        else:
+            trajectory = np.array(trajectory)
+
+        if trajectory is None:
+            return self.last_steer
+        if trajectory.ndim != 2 or trajectory.shape[1] != 2:
+            return self.last_steer
+
         trajectory = np.unique(trajectory, axis=0) 
         # sort trajectory by y from highest to lowest
         trajectory = trajectory[np.argsort(trajectory[:, 1])[::-1]] 
@@ -117,6 +128,7 @@ class LateralControl:
         print(f"max_steer: {max_steer}")
         print(f"traj len: {len(trajectory)}")
 
+        self.last_steer = steer
         return steer 
     
     def control(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
