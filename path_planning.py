@@ -16,15 +16,15 @@ class PathPlanning:
         self.splinegrad = 2
 
         # Für optimierten Spur
-        self.opti_trajectory_scalar = 1500
-        self.opti_trajecotry_smoothing = 10
+        self.opti_trajectory_scalar = 1200
+        self.opti_trajecotry_smoothing = 8.4
         self.opti_splinegrad = 2
 
         # Wann auf 100% Krümmung genormt wird
-        self.curvature_clip_threshold = 0.04
+        self.curvature_clip_threshold = 0.045
 
         # Maximale Auslenkung bei 100% Krümmung
-        self.max_cut_shift = 6
+        self.max_cut_shift = 5.5
 
         # Spur länge
         self.path_length = 200
@@ -76,27 +76,38 @@ class PathPlanning:
         return (left_lane[:min_len] + right_lane[:min_len]) / 2.0
 
     def build_trajectory(self, waypoints, optimized=False):
-        """Interpoliert eine glatte Trajektorie aus gegebenen Wegpunkten mithilfe von Splines.
-            Wählt Parameter für Glättung abhängig vom "optimized" Parameter"""
-        if len(waypoints) >= 3:
-            if optimized:
-                smoothing = self.opti_trajecotry_smoothing
-                splinegrad = self.opti_splinegrad
-                scalar = self.opti_trajectory_scalar
-            else:
-                smoothing = self.trajecotry_smoothing
-                splinegrad = self.splinegrad
-                scalar = self.trajectory_scalar
+        if optimized:
+            smoothing = self.opti_trajecotry_smoothing
+            splinegrad = self.opti_splinegrad
+            scalar = self.opti_trajectory_scalar
+        else:
+            smoothing = self.trajecotry_smoothing
+            splinegrad = self.splinegrad
+            scalar = self.trajectory_scalar
 
-            spline_model = splprep([waypoints[:, 0], waypoints[:, 1]], s=smoothing, k=splinegrad)[0]
-            u_fine = np.linspace(0, 1, scalar)
-            x_spline, y_spline = splev(u_fine, spline_model)
+        if (
+            isinstance(waypoints, np.ndarray) and
+            waypoints.ndim == 2 and
+            waypoints.shape[1] == 2 and
+            len(waypoints) >= splinegrad + 1 and
+            not np.isnan(waypoints).any() and
+            not np.isinf(waypoints).any()
+        ):
+            try:
+                spline_model = splprep([waypoints[:, 0], waypoints[:, 1]], s=smoothing, k=splinegrad)[0]
+                u_fine = np.linspace(0, 1, scalar)
+                x_spline, y_spline = splev(u_fine, spline_model)
 
-            if optimized:
-                return np.vstack((x_spline, y_spline)).T
-            else:
-                return np.vstack((x_spline, y_spline)).T, spline_model, u_fine
+                if optimized:
+                    return np.vstack((x_spline, y_spline)).T
+                else:
+                    return np.vstack((x_spline, y_spline)).T, spline_model, u_fine
+            except Exception as e:
+                print(f"[ERROR] Spline-Fit fehlgeschlagen: {e}")
+                return waypoints, None, None
+
         return waypoints, None, None
+
     
     def calculate_curvature(self, spline_model, u_fine):
         """Berechnet die Krümmung der Trajektorie auf Basis des Spline-Modells."""
