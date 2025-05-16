@@ -5,15 +5,15 @@ class LongitudinalControl:
     def __init__(self,
                  max_speed=60,
                  min_speed=30,
-                 brake_threshold=3.0,
-                 low_speed_threshold=20,
-                 low_speed_penalty_max=10,
-                 acc_damping_steering_thresh=0.2,
-                 acc_damping_curvature_thresh=0.2,
-                 brake_boost_steering_thresh=0.5,
-                 brake_boost_curvature_thresh=0.5,
-                 max_brake_boost=0.5,
-                 integral_limit=(-10, 10)):
+                 brake_threshold=0.9,
+                 low_speed_threshold=25,
+                 low_speed_penalty_max=5,
+                 acc_damping_steering_thresh=0.002,
+                 acc_damping_curvature_thresh=0.02,
+                 brake_boost_steering_thresh=0.03,
+                 brake_boost_curvature_thresh=0.02,
+                 max_brake_boost=0.03,
+                 integral_limit=(10, 10)):
 
         self.max_speed = max_speed
         self.min_speed = min_speed
@@ -27,13 +27,9 @@ class LongitudinalControl:
         self.brake_boost_curvature_thresh = brake_boost_curvature_thresh
         self.max_brake_boost = max_brake_boost
 
-        self.Kp_base = 0.05
-        self.Ki_base = 0.005
-        self.Kd_base = 0.01
-
-        self.Kp = self.Kp_base
-        self.Ki = self.Ki_base
-        self.Kd = self.Kd_base
+        self.Kp = 0.065
+        self.Ki = 0.005
+        self.Kd = 0.0175
 
         self.error = 0.0
         self.integral = 0.0
@@ -48,7 +44,7 @@ class LongitudinalControl:
         steering_factor = min(abs(steering_angle), 1.0)
 
         # Gewichtung einstellbar
-        combined_factor = 0.6 * curvature_factor + 0.4 * steering_factor
+        combined_factor = 0.4 * curvature_factor + 0.6 * steering_factor
         combined_factor = np.clip(combined_factor**1.1, 0.0, 1.0)
 
         target_speed = self.max_speed - combined_factor * (self.max_speed - self.min_speed)
@@ -57,10 +53,6 @@ class LongitudinalControl:
             penalty_ratio = (self.low_speed_threshold - speed) / self.low_speed_threshold
             target_speed -= penalty_ratio * self.low_speed_penalty_max
             target_speed = max(target_speed, self.min_speed)
-
-        self.Kp = self.Kp_base * (1 + combined_factor)
-        self.Ki = self.Ki_base * (1 + 0.5 * combined_factor)
-        self.Kd = self.Kd_base * (1 + 0.5 * combined_factor)
 
         self.debug_print(f"[TARGET] curv={curvature:.3f}, steer={steering_angle:.3f} → factor={combined_factor:.3f} → target={target_speed:.1f}")
         return target_speed
@@ -73,15 +65,15 @@ class LongitudinalControl:
         self.integral = np.clip(self.integral, *self.integral_limit)
         output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
 
-        # Acceleration-Dämpfung
+        # Acceleration-Dämpfung: Steering wirkt stärker als Curvature
         steer_damping = np.clip(abs(steering_angle) / self.acc_damping_steering_thresh, 0.0, 1.0)
         curv_damping = np.clip(abs(curvature) / self.acc_damping_curvature_thresh, 0.0, 1.0)
-        acc_penalty = 1.0 - 0.5 * (steer_damping + curv_damping)
+        acc_penalty = 1.0 - (0.7 * steer_damping + 0.3 * curv_damping)  # z. B. 70% steering, 30% curvature
 
-        # Bremsen-Booster
+        # Bremsen-Booster: Curvature wirkt stärker als Steering
         steer_boost = np.clip(abs(steering_angle) / self.brake_boost_steering_thresh, 0.0, 1.0)
         curv_boost = np.clip(abs(curvature) / self.brake_boost_curvature_thresh, 0.0, 1.0)
-        brake_boost_factor = max(steer_boost, curv_boost) * self.max_brake_boost
+        brake_boost_factor = (0.3 * steer_boost + 0.7 * curv_boost) * self.max_brake_boost  # 70% curvature
 
         braking = 0
         acceleration = 0
