@@ -60,8 +60,8 @@ def run(env, input_controller: InputController):
             steering = input_controller.steer
 
         # Zielgeschwindigkeit & Reglersteuerung
-        target_speed = longitudinal_control.predict_target_speed(curvature, info["speed"], steering)
-        acceleration, braking = longitudinal_control.control(info["speed"], target_speed, steering)
+        target_speed = longitudinal_control.predict_target_speed(curvature, steering, info["speed"])
+        acceleration, braking = longitudinal_control.control(info["speed"], target_speed, steering, curvature)
 
         speed_history.append(info["speed"])
         target_speed_history.append(target_speed)
