@@ -149,5 +149,5 @@ class LateralControl:
         return steer 
     
     def control(self, trajectory: np.ndarray, speed: np.ndarray) -> float:
-        return self.stanley(car, trajectory, speed)
+        return self.stanley(trajectory, speed)
 
