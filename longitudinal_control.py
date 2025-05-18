@@ -2,48 +2,48 @@ import numpy as np
 import time
 
 class LongitudinalControl:
-    def __init__(self,
-                 max_speed=60,
-                 min_speed=30,
-                 brake_threshold=0.9,
-                 low_speed_threshold=25,
-                 low_speed_penalty_max=5,
-                 acc_damping_steering_thresh=0.002,
-                 acc_damping_curvature_thresh=0.02,
-                 brake_boost_steering_thresh=0.03,
-                 brake_boost_curvature_thresh=0.02,
-                 max_brake_boost=0.03,
-                 integral_limit=(10, 10)):
+    def __init__(self):
+        # === Zielgeschwindigkeiten ===
+        self.max_speed = 60                    # maximale Geschwindigkeit (z. B. Geradeaus)
+        self.min_speed = 25                    # minimale Geschwindigkeit (z. B. Kurve)
 
-        self.max_speed = max_speed
-        self.min_speed = min_speed
-        self.brake_threshold = brake_threshold
-        self.low_speed_threshold = low_speed_threshold
-        self.low_speed_penalty_max = low_speed_penalty_max
+        # === Geschwindigkeitslogik ===
+        self.brake_threshold = 0.9             # ab wie viel Überschuss gebremst wird
+        self.low_speed_threshold = 25          # Mindestgeschwindigkeit, unter die nicht gebremst werden darf
+        self.low_speed_penalty_max = 20         # zusätzliche Dämpfung bei sehr niedriger Geschwindigkeit
 
-        self.acc_damping_steering_thresh = acc_damping_steering_thresh
-        self.acc_damping_curvature_thresh = acc_damping_curvature_thresh
-        self.brake_boost_steering_thresh = brake_boost_steering_thresh
-        self.brake_boost_curvature_thresh = brake_boost_curvature_thresh
-        self.max_brake_boost = max_brake_boost
+        # === Thresholds für Dämpfung / Boost ===
+        self.acc_damping_steering_thresh = 0.01       # Lenkwinkel-Schwelle für Beschleunigungsdämpfung
+        self.acc_damping_curvature_thresh = 0.01      # Krümmungs-Schwelle für Beschleunigungsdämpfung
+        self.brake_boost_steering_thresh = 0.05       # Lenkwinkel-Schwelle für Bremsverstärkung
+        self.brake_boost_curvature_thresh = 0.015     # Krümmungs-Schwelle für Bremsverstärkung
+        self.max_brake_boost = 0.03                   # Maximaler Zusatzboost durch Boost-Logik
 
+        # === Soft-/Hard-Brake-Grenzen ===
+        self.soft_brake_curv_thresh = 0.005     # Ab dieser Krümmung leichte Bremse
+        self.hard_brake_curv_thresh = 0.2     # Ab dieser Krümmung harte Bremse
+        self.soft_brake_steer_thresh = 0.1    # Ab diesem Lenkwinkel leichte Bremse
+        self.hard_brake_steer_thresh = 0.4    # Ab diesem Lenkwinkel harte Bremse
+        self.soft_brake_boost = 0.3            # Verstärkung bei Soft-Brake
+        self.hard_brake_boost = 0.8            # Verstärkung bei Hard-Brake
+
+        # === PID-Regler ===
         self.Kp = 0.065
         self.Ki = 0.005
         self.Kd = 0.0175
-
+        self.integral_limit = (10, 10)         # Begrenzung des Integralanteils
         self.error = 0.0
         self.integral = 0.0
         self.last_error = 0.0
-        self.integral_limit = integral_limit
-        self.last_target_speed = max_speed
+        self.last_target_speed = self.max_speed
 
+        # === Sonstiges ===
         self.last_debug_time = 0
 
     def predict_target_speed(self, curvature: float, steering_angle: float, speed: float) -> float:
         curvature_factor = abs(curvature)
         steering_factor = min(abs(steering_angle), 1.0)
 
-        # Gewichtung einstellbar
         combined_factor = 0.4 * curvature_factor + 0.6 * steering_factor
         combined_factor = np.clip(combined_factor**1.1, 0.0, 1.0)
 
@@ -65,15 +65,13 @@ class LongitudinalControl:
         self.integral = np.clip(self.integral, *self.integral_limit)
         output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
 
-        # Acceleration-Dämpfung: Steering wirkt stärker als Curvature
         steer_damping = np.clip(abs(steering_angle) / self.acc_damping_steering_thresh, 0.0, 1.0)
         curv_damping = np.clip(abs(curvature) / self.acc_damping_curvature_thresh, 0.0, 1.0)
-        acc_penalty = 1.0 - (0.7 * steer_damping + 0.3 * curv_damping)  # z. B. 70% steering, 30% curvature
+        acc_penalty = 1.0 - (0.7 * steer_damping + 0.3 * curv_damping)
 
-        # Bremsen-Booster: Curvature wirkt stärker als Steering
         steer_boost = np.clip(abs(steering_angle) / self.brake_boost_steering_thresh, 0.0, 1.0)
         curv_boost = np.clip(abs(curvature) / self.brake_boost_curvature_thresh, 0.0, 1.0)
-        brake_boost_factor = (0.3 * steer_boost + 0.7 * curv_boost) * self.max_brake_boost  # 70% curvature
+        brake_boost_factor = (0.3 * steer_boost + 0.7 * curv_boost) * self.max_brake_boost
 
         braking = 0
         acceleration = 0
@@ -81,7 +79,7 @@ class LongitudinalControl:
         self.last_target_speed = target_speed
         reason = "neutral"
 
-        if speed > target_speed:
+        if speed > target_speed and speed > self.low_speed_threshold:
             delta = speed - target_speed
             if speed_drop > 2.0:
                 braking = np.clip(speed_drop / 10, 0, 1)
@@ -91,12 +89,40 @@ class LongitudinalControl:
                 reason = f"brake: delta={delta:.1f} > threshold={self.brake_threshold} → braking={braking:.2f}"
             else:
                 reason = f"coast: delta={delta:.1f} → no brake"
+
+            # Nicht unter low_speed_threshold bremsen
+            if target_speed < self.low_speed_threshold:
+                min_limit = self.low_speed_threshold + 0.5
+                if speed < min_limit:
+                    braking = 0
+                    reason += f" → no brake (min {min_limit:.1f})"
+
         else:
             acceleration = np.clip(output, 0, 1)
             reason = f"accelerate: acc={acceleration:.2f}, penalty={acc_penalty:.2f}"
 
         acceleration *= acc_penalty
-        braking *= 1.0 + brake_boost_factor
+
+        # Zusätzliche Soft-/Hard-Brake-Logik
+        soft_brake_triggered = (
+            abs(curvature) > self.soft_brake_curv_thresh or
+            abs(steering_angle) > self.soft_brake_steer_thresh
+        )
+        hard_brake_triggered = (
+            abs(curvature) > self.hard_brake_curv_thresh or
+            abs(steering_angle) > self.hard_brake_steer_thresh
+        )
+
+        if hard_brake_triggered:
+            brake_boost = self.hard_brake_boost
+            reason += " + hard_brake"
+        elif soft_brake_triggered:
+            brake_boost = self.soft_brake_boost
+            reason += " + soft_brake"
+        else:
+            brake_boost = 0.0
+
+        braking *= 1.0 + brake_boost + brake_boost_factor
 
         self.debug_print(f"[LongCtrl] speed={speed:.1f}, target={target_speed:.1f}, steer={steering_angle:.2f}, curv={curvature:.2f} → {reason}")
         return acceleration, braking
