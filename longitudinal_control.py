@@ -15,14 +15,14 @@ class LongitudinalControl:
         self.min_speed = 30  # km/h
 
         # Regelstärken für proportionale Reaktion (kein reiner PID-Output)
-        self.acceleration_strength = 0.047  
-        self.braking_strength = 0.046     
+        self.acceleration_strength = 0.045  
+        self.braking_strength = 0.025     
 
         # PID-Konstanten (optional genutzt)
-        self.Kp = 0.08
-        self.Ki = 0.026
-        self.Kd = 0.049
-        self.integral_limit = (10, 10)
+        self.Kp = 0.055
+        self.Ki = 0.015
+        self.Kd = 0.08
+        # self.integral_limit = (10, 10)
 
         # Zustandsvariablen für PID-Regelung
         self.error = 0.0
@@ -76,7 +76,7 @@ class LongitudinalControl:
         """
         error = target_speed - speed
         self.integral += error
-        self.integral = np.clip(self.integral, *self.integral_limit)
+        # self.integral = np.clip(self.integral, *self.integral_limit)
         derivative = error - self.last_error
         self.last_error = error
 
@@ -84,10 +84,13 @@ class LongitudinalControl:
         braking = 0.0
         delta_v = speed - target_speed  # >0 → zu schnell
 
+        # PID-Ausgabe
+        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+
         if delta_v > 0:
             # Überschwindigkeit → proportional bremsen
-            braking = np.clip(delta_v * self.braking_strength, 0, 1)
+            braking = np.clip(delta_v * self.braking_strength + max(-output, 0), 0, 1)
         else:
             # Unterschwindigkeit → proportional beschleunigen
-            acceleration = np.clip(-delta_v * self.acceleration_strength, 0, 1)
+            acceleration = np.clip(-delta_v * self.acceleration_strength + max(output, 0), 0, 1)
         return acceleration, braking
