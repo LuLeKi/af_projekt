@@ -6,7 +6,7 @@ from car import Car
 from env_wrapper import CarRacingEnvWrapper
 
 
-def evaluate(env, eval_runs=50, eval_length=600):
+def evaluate(env, eval_runs=200, eval_length=600):
 
     episode_rewards = []
     for episode in range(eval_runs):
