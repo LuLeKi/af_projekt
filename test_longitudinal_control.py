@@ -51,7 +51,7 @@ def run(env, input_controller: InputController):
             left_lane, right_lane = info["left_lane_boundary"], info["right_lane_boundary"]
 
         # Trajektorie + Krümmung berechnen
-        trajectory, _, curvature = path_planning.plan(left_lane, right_lane)
+        trajectory, curvature = path_planning.plan(left_lane, right_lane)
 
         # Lenkwinkel berechnen (manuell oder per Regler)
         if lateral_control_steering:
@@ -60,8 +60,8 @@ def run(env, input_controller: InputController):
             steering = input_controller.steer
 
         # Zielgeschwindigkeit & Reglersteuerung
-        target_speed = longitudinal_control.predict_target_speed(curvature, info["speed"], steering)
-        acceleration, braking = longitudinal_control.control(info["speed"], target_speed, steering)
+        target_speed = longitudinal_control.predict_target_speed(curvature, steering)
+        acceleration, braking = longitudinal_control.control(info["speed"], target_speed)
 
         speed_history.append(info["speed"])
         target_speed_history.append(target_speed)
@@ -108,7 +108,6 @@ def visualize_planning_view(state_image, left_lane, right_lane, trajectory):
     try:
         trajectory = np.array(trajectory, dtype=np.int32)
     except Exception as e:
-        print(f"[ERROR] Visualisierung: Ungültige Trajektorie - {e}")
         trajectory = np.empty((0, 2), dtype=np.int32)
     left_lane = np.array(left_lane, dtype=np.int32)
     right_lane = np.array(right_lane, dtype=np.int32)

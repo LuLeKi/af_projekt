@@ -1,108 +1,93 @@
 import numpy as np
 import time
+import math
 
 class LongitudinalControl:
+    """
+    Führt die Längsregelung des Fahrzeugs durch.
+    Bestimmt auf Basis der Zielgeschwindigkeit und Ist-Geschwindigkeit das Brems- und Gassignal.
+    """
+
     def __init__(self):
-            self.last_debug_time = 0
-            # PID Basiswerte
-            self.Kp_base = 0.05
-            self.Ki_base = 0.005
-            self.Kd_base = 0.01
+        """Initialisiert Regelparameter, Geschwindigkeitsgrenzen und Zustände."""
+        # Zielgeschwindigkeiten
+        self.max_speed = 65  # km/h
+        self.min_speed = 30  # km/h
 
-            # PID aktive Werte
-            self.Kp = self.Kp_base
-            self.Ki = self.Ki_base
-            self.Kd = self.Kd_base
+        # Regelstärken für proportionale Reaktion (kein reiner PID-Output)
+        self.acceleration_strength = 0.047  
+        self.braking_strength = 0.046     
 
-            # Fehlertracking
-            self.error = 0.0
-            self.integral = 0.0
-            self.last_error = 0.0
+        # PID-Konstanten (optional genutzt)
+        self.Kp = 0.08
+        self.Ki = 0.026
+        self.Kd = 0.049
+        self.integral_limit = (10, 10)
 
-            # === Parameter für Anpassung ===
-            self.max_speed = 60
-            self.min_speed = 30
+        # Zustandsvariablen für PID-Regelung
+        self.error = 0.0
+        self.integral = 0.0
+        self.last_error = 0.0
+        self.last_target_speed = self.max_speed
 
-            self.brake_threshold = 3.0  # Nur wenn wir >3 km/h über Zielspeed sind, bremsen
+        # Zeitsteuerung für Debug-Ausgabe
+        self.last_debug_time = 0
 
+    def predict_target_speed(self, curvature: float, steering_angle: float) -> float:
+        """
+        Berechnet die Zielgeschwindigkeit anhand der aktuellen Kurvenkrümmung und Lenkwinkel.
 
-            self.steering_threshold = 1.0  # bei 0.5 beginnt max Dämpfung durch Lenkung
-            self.low_speed_threshold = 20
-            self.low_speed_penalty_max = 10
+        Args:
+            curvature (float): Streckenkrümmung (≥ 0).
+            steering_angle (float): Lenkwinkel (in rad oder normiert).
+            speed (float): Aktuelle Geschwindigkeit des Fahrzeugs.
 
-            self.integral_limit = (-10, 10)
-
-
-    def predict_target_speed(self, curvature: float, steering_angle: float, speed: float) -> float:
-        # Krümmungsfaktor (aus Path Planning)
-        # curvature_factor = min(abs(curvature), 1.0)
+        Returns:
+            float: Zielgeschwindigkeit [km/h], mindestens min_speed.
+        """
         curvature_factor = abs(curvature)
+        steering_factor = abs(steering_angle)
 
-        # Steuerfaktor: ab 0.3 deutliches Lenken
-        steering_factor = min(abs(steering_angle) / self.steering_threshold, 1.0)
+        # Geringe Werte werden verstärkt (nicht zu stark bremsen auf Geraden)
+        if curvature_factor < 0.022:
+            curvature_factor *= 1.6
+        if steering_factor < 0.055:
+            steering_factor *= 2.0
 
-        # Kombinierter Faktor (konservativ: max nehmen)
-        combined_factor = 0.0 if abs(steering_angle) < 1e-3 else max(curvature_factor, steering_factor)
+        # Kombination mit Gewichtung: Kurve wirkt stärker als Lenkung
+        combined_factor = 5.7 * (0.6 * curvature_factor + 0.4 * steering_factor)
 
-
-        # Basis-Zielgeschwindigkeit
+        # Zieltempo aus max/min-Speed linear ableiten
         target_speed = self.max_speed - combined_factor * (self.max_speed - self.min_speed)
-
-        # Zusätzliche Dämpfung bei niedriger Geschwindigkeit
-        if speed < self.low_speed_threshold:
-            penalty_ratio = (self.low_speed_threshold - speed) / self.low_speed_threshold
-            target_speed -= penalty_ratio * self.low_speed_penalty_max
-            target_speed = max(target_speed, self.min_speed)
-
-        # Dynamische PID-Anpassung
-        self.Kp = self.Kp_base * (1 + combined_factor)
-        self.Ki = self.Ki_base * (1 + 0.5 * combined_factor)
-        self.Kd = self.Kd_base * (1 + 0.5 * combined_factor)
+        target_speed = max(target_speed, self.min_speed)
 
         return target_speed
 
+    def control(self, speed: float, target_speed: float) -> tuple[float, float]:
+        """
+        Führt die Längsregelung durch: bestimmt Brems- oder Beschleunigungssignal.
 
-    def control(self, speed: float, target_speed: float, steering_angle: float) -> tuple[float, float]:
-            error = target_speed - speed
-            self.integral += error
-            derivative = error - self.last_error
-            self.last_error = error
+        Args:
+            speed (float): Aktuelle Geschwindigkeit [km/h].
+            target_speed (float): Vorgabe-Zielgeschwindigkeit [km/h].
 
-            self.integral = np.clip(self.integral, *self.integral_limit)
+        Returns:
+            tuple[float, float]: (Beschleunigungswert, Bremswert), beide ∈ [0.0, 1.0]
+        """
+        error = target_speed - speed
+        self.integral += error
+        self.integral = np.clip(self.integral, *self.integral_limit)
+        derivative = error - self.last_error
+        self.last_error = error
 
-            output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+        acceleration = 0.0
+        braking = 0.0
+        delta_v = speed - target_speed  # >0 → zu schnell
 
-            steering_penalty = np.cos(abs(steering_angle) * np.pi / 2) ** 2
-
-            if speed > target_speed:
-                delta = speed - target_speed
-                if delta > self.brake_threshold:
-                    braking = np.clip(delta / target_speed, 0, 1)
-                    acceleration = 0
-                    braking /= steering_penalty
-                else:
-                    acceleration = 0  # rollen lassen
-                    braking = 0
-            else:
-                acceleration = np.clip(output, 0, 1)
-                braking = 0
-
-
-            acceleration *= steering_penalty
-            # === DEBUG-AUSGABE ALLE 0.5s ===
-            now = time.time()
-            if now - self.last_debug_time > 0.5:
-                self.last_debug_time = now
-                reason = "neutral"
-                if speed > target_speed:
-                    delta = speed - target_speed
-                    if delta > self.brake_threshold:
-                        reason = f"brake: delta={delta:.1f} > threshold={self.brake_threshold} → braking={braking:.2f}"
-                    else:
-                        reason = f"coast: delta={delta:.1f} → no brake"
-                elif acceleration > 0:
-                    reason = f"accelerate: acc={acceleration:.2f} (steering_penalty={steering_penalty:.2f})"
-                print(f"[LongCtrl] speed={speed:.1f}, target={target_speed:.1f}, steer={steering_angle:.2f} → {reason}")
-
-            return acceleration, braking
-
+        if delta_v > 0:
+            # Überschwindigkeit → proportional bremsen
+            braking = np.clip(delta_v * self.braking_strength, 0, 1)
+        else:
+            # Unterschwindigkeit → proportional beschleunigen
+            acceleration = np.clip(-delta_v * self.acceleration_strength, 0, 1)
+        return acceleration, braking

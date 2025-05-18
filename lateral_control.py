@@ -60,10 +60,11 @@ class LateralControl:
     def angle_to_vec(self, angle) -> np.ndarray:
         return np.array([np.cos(angle), np.sin(angle)])
 
-    def stanley(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
-        K1 = 0.05
-        K2 = 1.9
-        Ks = 0.8
+    def stanley(self, trajectory: np.ndarray, speed: np.ndarray) -> float:
+        K1 = 0.02
+        K2 = 4.5 
+        Ks = 0.2
+        Kd = 0.2
 
         max_cross_error = 10
         max_steer = 1
@@ -91,7 +92,7 @@ class LateralControl:
 
         dists = np.linalg.norm(trajectory - self._car_position, axis=1)
         closest_index = np.argmin(dists)
-        lookahead_index = min(closest_index + 2, max(len(trajectory) - 1, 0))
+        lookahead_index = min(closest_index + 3, max(len(trajectory) - 1, 0))
         self.lookahead_index = lookahead_index
 
 
@@ -104,7 +105,7 @@ class LateralControl:
 
         heading_error = self.angle_between_vectors(
             trajectory_tangent_vec,
-            self.angle_to_vec(car.hull.angle)
+            np.array([0, 1]),
         )
 
         error_vec = next_point - self._car_position
@@ -115,12 +116,20 @@ class LateralControl:
             return 0.0
 
         if speed < 1e-2:
+            self.prev_head_error = heading_error
             return 0.0
 
         cross_error = np.clip(cross_error, -max_cross_error, max_cross_error)
         K2_effective = K2 * (1 - np.exp(-abs(cross_error) / 3))
 
         steer = np.arctan2(K2_effective * cross_error, speed + Ks + 1) + heading_error * K1
+
+        delta_head_error = heading_error - self.prev_head_error
+        self.prev_head_error = heading_error
+        # Fügen Sie den Dämpfungsterm hinzu. Er wirkt der Änderung entgegen.
+        damping_term = -1 * min(Kd * delta_head_error, 0.1)
+        #steer += damping_term
+
         steer = np.clip(steer, -max_steer, max_steer)
 
         if (PRINT_DEBUG):
@@ -134,10 +143,11 @@ class LateralControl:
             print(f"steer: {steer}")
             print(f"max_steer: {max_steer}")
             print(f"traj len: {len(trajectory)}")
+            print(f"heading damping: {delta_head_error}")
 
         self.last_steer = steer
         return steer 
     
-    def control(self, car, trajectory: np.ndarray, speed: np.ndarray) -> float:
-        return self.stanley(car, trajectory, speed)
+    def control(self, trajectory: np.ndarray, speed: np.ndarray) -> float:
+        return self.stanley(trajectory, speed)
 
