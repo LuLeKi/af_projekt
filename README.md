@@ -1,5 +1,5 @@
 # Abschlussprojekt: Autonomer Rennwagen
-Reinhold Brant (), Luis Kilic (7492409)
+Reinhold Brant (7261389), Luis Kilic (7492409)
 
 ## 1. Installation
 Projekt herunterladen
