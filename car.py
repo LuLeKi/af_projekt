@@ -28,7 +28,7 @@ class Car:
         trajectory, curvature = self._path_planning.plan(left_lane_boundaries, right_lane_boundaries)
 
         # 3. Querregelung (Stanley): Lenkwinkel berechnen
-        steering_angle = self._lateral_control.control(self, trajectory, info["speed"])
+        steering_angle = self._lateral_control.control(trajectory, info["speed"])
 
         # 4. Zielgeschwindigkeit basierend auf Krümmung und Lenkwinkel
         target_speed = self._longitudinal_control.predict_target_speed(curvature, steering_angle)
