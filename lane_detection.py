@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 import time as t
 from scipy.signal import convolve2d
 from scipy.ndimage import label
@@ -8,13 +7,11 @@ import matplotlib.pyplot as plt
 
 
 class LaneDetection:
+    """
+    Detects lane lines in a state image using edge detection and connected components.
+    """
 
     debug_image = None
-    left_lane = None
-    right_lane = None
-    detected_lane_grad = None
-    # for randomize optim calculte histogram and then 
-    # improve contrast
     THRESHOLDING_POINT = 50
 
     def __init__(self):
@@ -22,9 +19,13 @@ class LaneDetection:
 
     def align_to_wrapper(self, detected_pts: np.ndarray) -> np.ndarray:
         """
-        detected_pts: (N,2) array of (v,row, u,col) in [0..95] state‐pixel coords
-        returns:      (N,2) array of (x, y) in same frame as
-                    _get_lane_boundary_groundtruth  i.e. origin bottom‐left.
+        Transforms detected image coordinates (v, u) to a world coordinate system (x, y).
+
+        Args:
+            detected_pts: (N, 2) array of (v, u) image coordinates [0..95].
+
+        Returns:
+            (N, 2) array of (x, y) points in the wrapper's coordinate frame (origin bottom-left).
         """
         vs = detected_pts[:, 0].astype(float)
         us = detected_pts[:, 1].astype(float)
@@ -36,76 +37,54 @@ class LaneDetection:
 
 
     def normalize_floats(self, matrix):
+        """
+        Normalizes a float matrix to the 0-255 range.
+
+        Args:
+            matrix: Input NumPy array.
+
+        Returns:
+            NumPy array normalized to [0, 255].
+        """
         matrix = 255 * (matrix - np.min(matrix)) / (np.max(matrix) - np.min(matrix))
-        return matrix
-
-    def binary_dilation(self, img, structure=None):
-        img = img > 0
-        if structure is None:
-            structure = np.ones((3, 3), dtype=bool)
-
-        # Perform convolution
-        convolved = convolve2d(img.view(np.uint8), structure.view(np.uint8), mode='same', boundary='fill', fillvalue=0)
-
-        # Any nonzero result means at least one neighbor was active
-        return convolved > 0
-
-    def grow_region(self, img, start, structure=None):
-        bool_image = img > 0
-        seed = np.zeros_like(bool_image, dtype=bool)
-        seed[start] = True
-
-        prev = None
-        curr = seed.copy()
-
-        while prev is None or not np.array_equal(prev, curr):
-            prev = curr.copy()
-            curr = self.binary_dilation(curr, structure) & bool_image
- 
-        return curr.astype(np.uint8) * 255
-
-    def grow(self, img, start):
-        mask = img > 0
-        visited = np.zeros_like(mask, dtype=bool)
-        stack = [start]
-        height, width = mask.shape
-
-        while stack:
-            y, x = stack.pop()
-            if not (0 <= y < height and 0 <= x < width):
-                continue
-            if visited[y, x] or not mask[y, x]:
-                continue
-
-            visited[y, x] = True
-            # add four pints around current coordinate to stack
-            # to then check if they are in the mask(image)
-            stack.extend([(y-1, x), (y+1, x), (y, x-1), (y, x+1)])
-
-        return visited.astype(np.uint8) * 255
+        return matrix 
 
     def detect(self, state_image):
+        """
+        Detects lane lines in the input state image.
+
+        Processes the image using grayscale conversion, Prewitt edge detection,
+        thresholding, connected components analysis, and point interpolation
+        to find left and right lane points.
+
+        Args:
+            state_image: The input image array.
+
+        Returns:
+            A tuple containing two NumPy arrays: (left_lane_points, right_lane_points),
+            each in the wrapper's (x, y) coordinate frame. Empty arrays if no points found.
+        """
         # turn image to grayscale
         self.debug_image = state_image.copy()
         gray_img = np.dot(state_image[...,:3], [0.299, 0.587, 0.114])
         gray_normalized = self.normalize_floats(gray_img) 
 
         # now convolve the image
-        # i want to use prewitt
+        # use prewitt
+        # vertical filter
         kx = np.array([[-1, 0, 1],
                [-1, 0, 1],
-               [-1, 0, 1]], dtype=np.float32)  # vertical filter
+               [-1, 0, 1]], dtype=np.float32) 
 
+        #horizontal filter 
         ky = np.array([[ 1,  1,  1],
                [ 0,  0,  0],
                [-1, -1, -1]], dtype=np.float32)  
-        # print(kx.shape, ky.shape)
 
         cx = convolve2d(gray_normalized, kx, mode="same", boundary="symm")
         cy = convolve2d(gray_normalized, ky, mode="same", boundary="symm")
 
         grad = np.sqrt(cx**2 + cy**2)
-        # print(grad)
         grad = self.normalize_floats(grad)
 
         #remove car from image
@@ -118,9 +97,12 @@ class LaneDetection:
 
         # thresholding
         grad = (grad > self.THRESHOLDING_POINT) * grad * (255 / grad)
-        self.detected_lane_grad = [(y, x) for x, y in zip(*np.where(grad > 0))] 
 
+        # distinguish between left and right lane
+        # by finding the nearest lane and.
+        # there are situations where there are three or four lanes found -> chicane
         labeled_mask, num_features = label(grad > 0, structure=np.ones((3, 3)))
+
         min_dists = []
         for i in range(1, num_features + 1):
             mask = labeled_mask == i
@@ -142,13 +124,11 @@ class LaneDetection:
         else:
             right_mask = np.empty((0, 2))
 
-        self.left_lane = left_mask
-        self.right_lane = right_mask
-
         #return an array of coordinates where the values are non-zero for every lane
         left_lane_points = np.argwhere(left_mask > 0)
         right_lane_points = np.argwhere(right_mask > 0)
 
+        # thin out lane to one pixel by removing points with duplicate y
         unique_y = {}
         for y, x in left_lane_points:
             if y not in unique_y or abs(x - unique_y[y]) > 1:
@@ -167,6 +147,7 @@ class LaneDetection:
         if right_lane_points.size == 0:
             right_lane_points = np.empty((0, 2)) 
 
+        # interpolating over both lanes to generate a smooth lane
         if left_lane_points.size > 0:
             left_lane_points = left_lane_points[left_lane_points[:, 1].argsort()]
             new_y = np.linspace(left_lane_points[:, 1].min(), left_lane_points[:, 1].max(), 250)
@@ -182,13 +163,5 @@ class LaneDetection:
         left_lane_points = left_lane_points[np.argsort(left_lane_points[:, 1])]
         right_lane_points = right_lane_points[np.argsort(right_lane_points[:, 1])]
 
-
-        #left_lane_mask = left_lane_points.astype(bool)[:, :, np.newaxis]
-        #right_lane_mask = right_lane_points.astype(bool)[:, :, np.newaxis]
-        #initial_lanes_mask = (grad > 0).astype(bool)[:, :, np.newaxis]
-        #lanes_mask = left_lane_mask | right_lane_mask | initial_lanes_mask 
-        #self.debug_image = np.where(initial_lanes_mask, np.stack((grad,) * 3, axis=-1) * (1, 1, 1), self.debug_image)
-        #self.debug_image = np.where(lanes_mask, np.stack((left_lane,) * 3, axis=-1) * (0, 0, 1), state_image)
-        #self.debug_image = np.where(right_lane_mask, np.stack((right_lane,) * 3, axis=-1) * (0, 1, 0), self.debug_image)
-            
+ 
         return self.align_to_wrapper(left_lane_points), self.align_to_wrapper(right_lane_points)
