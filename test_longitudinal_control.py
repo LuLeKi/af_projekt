@@ -51,7 +51,7 @@ def run(env, input_controller: InputController):
             left_lane, right_lane = info["left_lane_boundary"], info["right_lane_boundary"]
 
         # Trajektorie + Krümmung berechnen
-        trajectory, _, curvature = path_planning.plan(left_lane, right_lane)
+        trajectory, curvature = path_planning.plan(left_lane, right_lane)
 
         # Lenkwinkel berechnen (manuell oder per Regler)
         if lateral_control_steering:

@@ -105,10 +105,6 @@ class LaneDetection:
         cy = convolve2d(gray_normalized, ky, mode="same", boundary="symm")
 
         grad = np.sqrt(cx**2 + cy**2)
-
-        with np.errstate(divide='ignore', invalid='ignore'):                    ##fix warning msg
-            grad = (grad > self.THRESHOLDING_POINT) * grad * (255 / grad)
-
         # print(grad)
         grad = self.normalize_floats(grad)
 

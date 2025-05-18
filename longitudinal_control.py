@@ -87,7 +87,6 @@ class LongitudinalControl:
         if delta_v > 0:
             # Überschwindigkeit → proportional bremsen
             braking = np.clip(delta_v * self.braking_strength, 0, 1)
-            reason = f"braking: Δv={delta_v:.2f} → {braking:.2f}"
         else:
             # Unterschwindigkeit → proportional beschleunigen
             acceleration = np.clip(-delta_v * self.acceleration_strength, 0, 1)
