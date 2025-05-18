@@ -30,6 +30,7 @@ import numpy as np
 lane_detector = LaneDetection()
 left_lane_points, right_lane_points = lane_detector.detect(state_image)
 
+
 # left_lane_points and right_lane_points are now numpy arrays with shape (N, 2)
 # in the target (x, y) coordinate system.
 
