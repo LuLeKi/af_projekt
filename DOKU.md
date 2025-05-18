@@ -1,4 +1,4 @@
-# Simple Lane Detection Module
+# Lane Detection Module
 
 This Python code implements a basic lane detection algorithm using image processing techniques. It takes a grayscale image representing the road ahead (likely from a simulation or simplified sensor) and attempts to identify the left and right lane boundaries as sets of 2D points.
 
@@ -33,6 +33,43 @@ left_lane_points, right_lane_points = lane_detector.detect(state_image)
 # left_lane_points and right_lane_points are now numpy arrays with shape (N, 2)
 # in the target (x, y) coordinate system.
 ````
+
+# Path Planning Module
+
+This Python module implements a trajectory planner for autonomous driving. It receives two detected lane boundaries (left and right) and generates a smooth, optimized trajectory between them, as well as an estimate of the average road curvature.
+
+## How it Works
+
+1. **Midline Calculation:**  
+   The method `build_waypoints()` computes the midpoint between the left and right lane boundaries to serve as the initial path centerline.
+
+2. **Spline-Based Smoothing:**  
+   The midpoints are fitted to a B-spline curve using `scipy.interpolate.splprep` for path smoothing. Separate spline parameters are used for the base and the optimized trajectory.
+
+3. **Curvature Calculation:**  
+   The first and second derivatives of the spline are used to calculate pointwise curvature. The median curvature is normalized and clipped to the range [–1, 1] based on a configurable threshold.
+
+4. **Local Path Extraction:**  
+   A local segment of the spline (typically ahead of the vehicle's fixed position) is extracted for further optimization. Normal vectors are computed along this path.
+
+5. **Path Optimization via Curvature-Based Shifting:**  
+   Each local path point is shifted sideways along its normal vector proportionally to the normalized curvature. This enables anticipatory cutting of inside curves.
+
+6. **Output:**  
+   The function `plan()` returns:
+   - A smoothed and optimized trajectory as `(N, 2)` array,
+   - A normalized curvature value for use in speed planning.
+
+## Usage
+
+```python
+from path_planning import PathPlanning
+
+planner = PathPlanning()
+trajectory, curvature = planner.plan(left_lane_points, right_lane_points)
+```
+
+`left_lane_points` and `right_lane_points` are expected as `(N, 2)` NumPy arrays in world coordinates (x, y).
 
 # Stanley Lateral Control Module
 
@@ -107,3 +144,37 @@ Here's a breakdown of the key steps and features:
 * The heading error is calculated relative to a fixed `[0, 1]` vector, which is a significant departure from the standard Stanley method and implies this controller is designed for a specific scenario where the desired trajectory tangent's relationship to a fixed direction is the relevant error, not the car's own heading relative to the path.
 * The sorting by y-coordinate in `stanley` also disrupts the original order of trajectory points, which is problematic for path following.
 * The heading error damping term (`Kd`) is calculated but commented out, so it's not active.
+
+# Longitudinal Control Module
+
+This module implements a longitudinal controller for an autonomous vehicle. Its task is to regulate the vehicle's speed by computing appropriate acceleration or braking values based on the difference between the current speed and the target speed.
+
+## How it Works
+
+1. **Target Speed Prediction:**
+   The `predict_target_speed()` function computes a target speed based on the current lane curvature and steering angle. Curves and strong steering reduce the target speed to ensure safe driving. Light curves and gentle steering have less effect. The combination of curvature and steering is weighted, scaled, and used to interpolate between a defined `max_speed` and `min_speed`.
+
+2. **PID-Controlled Speed Adjustment:**
+   The `control()` function calculates the difference (`error`) between the current and target speeds. It applies a PID controller (proportional, integral, derivative) to generate a control output.
+
+   - The **P-term** reacts to the immediate difference between actual and target speeds.
+   - The **I-term** accounts for accumulated past errors, helping to correct steady-state errors.
+   - The **D-term** anticipates future errors based on how quickly the speed difference changes.
+
+3. **Hybrid Control Strategy:**
+   The PID output is not used exclusively. Instead:
+   - The difference in speed (`delta_v`) is used to calculate a base braking or acceleration value.
+   - The PID output is added as a correction to that base value to smooth transitions.
+   - Output values are clipped to the range [0.0, 1.0].
+
+4. **Braking and Acceleration Logic:**
+   - If the vehicle is too fast (`delta_v > 0`), it brakes proportionally and adds any negative PID correction.
+   - If too slow, it accelerates proportionally and adds positive PID correction.
+
+## Example Usage
+
+```python
+controller = LongitudinalControl()
+target_speed = controller.predict_target_speed(curvature, steering_angle)
+acceleration, braking = controller.control(current_speed, target_speed)
+```
