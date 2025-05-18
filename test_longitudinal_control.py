@@ -55,7 +55,7 @@ def run(env, input_controller: InputController):
 
         # Lenkwinkel berechnen (manuell oder per Regler)
         if lateral_control_steering:
-            steering = lateral_control.control(env.unwrapped.car, trajectory, info["speed"])
+            steering = lateral_control.control(trajectory, info["speed"])
         else:
             steering = input_controller.steer
 

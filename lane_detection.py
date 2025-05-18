@@ -96,7 +96,8 @@ class LaneDetection:
         grad[cary + carh:] = 0
 
         # thresholding
-        grad = (grad > self.THRESHOLDING_POINT) * grad * (255 / grad)
+        grad_safe = np.where(grad == 0, 1e-6, grad)
+        grad = (grad > self.THRESHOLDING_POINT) * grad * (255 / grad_safe)
 
         # distinguish between left and right lane
         # by finding the nearest lane and.

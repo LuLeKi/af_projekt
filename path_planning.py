@@ -45,7 +45,7 @@ class PathPlanning:
                 not isinstance(self.last_valid_trajectory, np.ndarray) or
                 self.last_valid_trajectory.ndim != 2 or
                 self.last_valid_trajectory.shape[1] != 2):
-                return np.empty((0, 2)), np.empty((0, 2)), 0.0
+                return np.empty((0, 2)), 0.0
             return self.last_valid_trajectory, self.last_valid_local_path, self.last_valid_curvature
 
         # Glatte Basis-Trajektorie
