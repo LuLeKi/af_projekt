@@ -18,11 +18,7 @@ class LateralControl:
 
     def get_tangent_at_point(self, trajectory: np.ndarray, index: int) -> float:
         """
-        Calculates the tangent vector at a specific index along a trajectory.
-
-        Note: The initial line 'trajectory = trajectory.argsort(axis=0)' is likely incorrect
-        and will cause issues as it sorts indices instead of using the point data.
-        Assuming the input 'trajectory' is already an ordered sequence of points.
+        Calculates the tangent vector at a specific index along a trajectory. 
 
         Args:
             trajectory: (N, 2) array of ordered trajectory points.
@@ -90,10 +86,7 @@ class LateralControl:
     def stanley(self, trajectory: np.ndarray, speed: np.ndarray) -> float:
         """
         Calculates the steering command using a variation of the Stanley method.
-
-        Note: This implementation calculates heading error relative to a fixed
-        vector np.array([0, 1]), not the car's actual heading.
-
+ 
         Args:
             trajectory: (N, 2) array of trajectory points.
             speed: The car's current forward speed.
