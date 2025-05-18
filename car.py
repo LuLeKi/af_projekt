@@ -3,15 +3,11 @@ from lane_detection import LaneDetection
 from lateral_control import LateralControl
 from longitudinal_control import LongitudinalControl
 from path_planning import PathPlanning
-
-class DummyHull:
-    def __init__(self):
-        self.angle = 0.0  
+ 
 
 class Car:
 
     def __init__(self):
-        self.hull = DummyHull()
         self._lane_detection = LaneDetection()
         self._path_planning = PathPlanning()
         self._lateral_control = LateralControl()
