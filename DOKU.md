@@ -49,7 +49,7 @@ This Python module implements a trajectory planner for autonomous driving. It re
    The first and second derivatives of the spline are used to calculate pointwise curvature. The median curvature is normalized and clipped to the range [–1, 1] based on a configurable threshold.
 
 4. **Local Path Extraction:**  
-   A local segment of the spline (typically ahead of the vehicle's fixed position) is extracted for further optimization. Normal vectors are computed along this path.
+   A local segment of the spline (ahead of the vehicle's fixed position) is extracted for further optimization. Normal vectors are computed along this path.
 
 5. **Path Optimization via Curvature-Based Shifting:**  
    Each local path point is shifted sideways along its normal vector proportionally to the normalized curvature. This enables anticipatory cutting of inside curves.
