@@ -30,33 +30,20 @@ def run(env, input_controller: InputController):
 
     while not input_controller.quit:
         left_lane_boundaries, right_lane_boundaries = lane_detection.detect(state_image)
-        trajectory, t, curvature = path_planning.plan(
+        trajectory, curvature = path_planning.plan(
             left_lane_boundaries, right_lane_boundaries
         )
-        steering_angle = lateral_control.control(env.unwrapped.car, t, info["speed"])
-        target_speed = longitudinal_control.predict_target_speed(curvature)
-        target_speed = 15 
-        #acceleration, braking = longitudinal_control.control(
-        #    info["speed"], target_speed, steering_angle
-        #)
-        acceleration = 0.05
-        braking = 0
+        steering_angle = lateral_control.control(env.unwrapped.car, trajectory, info["speed"])
+        target_speed = longitudinal_control.predict_target_speed(curvature, steering_angle)
+        acceleration, braking = longitudinal_control.control(info["speed"], target_speed)
+
         speed_history.append(info["speed"])
         target_speed_history.append(target_speed)
 
-        cv_image = np.asarray(state_image, dtype=np.uint8)
-        for index, point in enumerate( lateral_control.trajectory):
-            if 0 < point[0] < 96 and 0 < point[1] < 96:
-                cv_image[int(point[1]), int(point[0])] = [255, 255, 255] if index != lateral_control.lookahead_index else [0, 255, 0]
-        for point in left_lane_boundaries:
-        #for point in info["left_lane_boundary"]:
+        cv_image = np.asarray(lane_detection.debug_image, dtype=np.uint8)
+        for point in trajectory:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
-                cv_image[int(point[1]), int(point[0])] = [255, 0, 0]
-        for point in right_lane_boundaries:
-        #for point in info["right_lane_boundary"]:
-            if 0 < point[0] < 96 and 0 < point[1] < 84:
-                cv_image[int(point[1]), int(point[0])] = [0, 0, 255]
-
+                cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
         cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
@@ -73,7 +60,7 @@ def run(env, input_controller: InputController):
             pass
 
         # Step the environment
-        a = [steering_angle, acceleration if info["speed"] < target_speed else 0, braking]
+        a = [steering_angle, acceleration, braking]
         state_image, r, done, trunc, info = env.step(a)
         total_reward += r
 
